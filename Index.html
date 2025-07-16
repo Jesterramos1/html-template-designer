@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Template Designer</title>
+    <link rel="stylesheet" href="Style.css">
+</head>
+<body>
+    <div class="header">
+        <h1>Template Designer</h1>
+    </div>
+
+    <div class="main-container">
+        <div class="sidebar">
+            <div class="toolbar">
+                <div class="toolbar-section">
+                    <h3>Actions</h3>
+                    <button class="btn btn-primary" id="addFieldBtn">Add Field</button>
+                    <button class="btn btn-primary" id="addLabelBtn">Add Label</button>
+                    <button class="btn btn-primary" id="addRectangleBtn">Add Rectangle</button>
+                    <button class="btn btn-primary" id="addLineBtn">Add Line</button>
+                    <button class="btn btn-secondary" id="toggleDragBtn">Enable Drag</button>
+                    <button class="btn btn-secondary" id="toggleLabelsBtn">Hide Labels</button>
+                    <button class="btn btn-secondary" id="toggleGridBtn">Show Grid</button>
+                </div>
+
+                <div class="toolbar-section">
+                    <h3>Canvas Size</h3>
+                    <div class="form-group">
+                        <label>Preset Sizes</label>
+                        <select class="form-control" id="sizePreset">
+                            <option value="custom">Custom</option>
+                            <option value="8.5x11" selected>Letter (8.5" � 11")</option>
+                            <option value="11x8.5">Letter Landscape (11" � 8.5")</option>
+                            <option value="8.5x14">Legal (8.5" � 14")</option>
+                            <option value="11x17">Tabloid (11" � 17")</option>
+                            <option value="8.27x11.69">A4 (8.27" � 11.69")</option>
+                            <option value="11.69x8.27">A4 Landscape</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <div class="input-group-sm">
+                            <label>Width (in)</label>
+                            <input type="number" class="form-control" id="canvasWidth" value="8.5" step="0.1">
+                        </div>
+                        <div class="input-group-sm">
+                            <label>Height (in)</label>
+                            <input type="number" class="form-control" id="canvasHeight" value="11" step="0.1">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="toolbar-section">
+                    <h3>Export</h3>
+                    <button class="btn btn-success" id="downloadHtmlBtn">Download HTML</button>
+                    <button class="btn btn-secondary" id="copyCssBtn">Copy CSS</button>
+                    <button class="btn btn-success" id="downloadPdfBtn">Download PDF</button>
+                </div>
+                <div class="toolbar-section">
+                    <h3>Import Template</h3>
+                    <input type="file" id="uploadTemplateInput" accept=".html" class="form-control">
+                </div>
+            </div>
+
+            <div class="properties-panel">
+                <h3>Properties</h3>
+                <div id="propertiesContent">
+                    <div class="no-selection">Select a field to edit its properties</div>
+                </div>
+            </div>
+
+            <div class="toolbar-section">
+                <h3>Field List</h3>
+                <div class="field-list" id="fieldList">
+                    <!-- Field items will be populated here -->
+                </div>
+            </div>
+        </div>
+
+        <div class="canvas-container">
+            <div class="form-wrapper" id="formWrapper">
+            </div>
+
+            <div class="zoom-controls">
+                <button class="btn btn-secondary" id="zoomOutBtn">-</button>
+                <span id="zoomLevel">100%</span>
+                <button class="btn btn-secondary" id="zoomInBtn">+</button>
+                <button class="btn btn-secondary" id="fitToPageBtn">Fit</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="status-bar">
+        <div id="statusText">Ready</div>
+        <div id="positionInfo">Position: 0, 0</div>
+    </div>
+    <script src="Script.js"></script>
+</body>
+</html>
