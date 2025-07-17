@@ -1355,8 +1355,8 @@
 
             printWindow.onload = function () {
                 printWindow.focus();
-                //printWindow.print();
-                //printWindow.close();
+                printWindow.print();
+                printWindow.close();
             };
 
             this.updateStatus('PDF download initiated');
