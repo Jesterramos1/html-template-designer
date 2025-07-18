@@ -1293,7 +1293,7 @@
                 }
 
                 // Add position absolute (required for proper rendering)
-                styleRules.push('position: absolute');
+                styleRules.push('position: absolute;');
 
                 // Add to CSS lines if we have any rules
                 if (styleRules.length > 0) {
