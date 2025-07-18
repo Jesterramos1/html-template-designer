@@ -9,6 +9,7 @@
             this.zoomLevel = 1;
             this.history = [];
             this.historyIndex = -1;
+            this.hasUnsavedChanges = false; 
 
             this.init();
         }
@@ -19,6 +20,7 @@
             this.updateFieldList();
             this.updateCanvasSize();
             this.saveState();
+            this.setupBeforeUnloadWarning();
         }
 
         bindEvents() {
@@ -57,6 +59,20 @@
 
             // Mouse tracking
             document.getElementById('formWrapper').addEventListener('mousemove', (e) => this.updateMousePosition(e));
+        }
+
+        setupBeforeUnloadWarning() {
+            window.addEventListener('beforeunload', (e) => {
+                if (this.hasUnsavedChanges) {
+                    e.preventDefault();
+                    e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+                    return e.returnValue;
+                }
+            });
+        }
+
+        resetUnsavedChanges() {
+            this.hasUnsavedChanges = false;
         }
 
         toggleDragMode() {
@@ -1113,6 +1129,7 @@
                 this.history.shift();
                 this.historyIndex--;
             }
+            this.hasUnsavedChanges = true;
         }
 
         undo() {
@@ -1343,6 +1360,7 @@
             URL.revokeObjectURL(url);
 
             this.updateStatus('HTML template downloaded');
+            this.resetUnsavedChanges();
         }
 
         downloadPdf() {
@@ -1588,6 +1606,7 @@
                 this.updateFieldList();
                 this.saveState();
                 this.updateStatus("Template imported successfully");
+                this.resetUnsavedChanges();
             };
 
             reader.readAsText(file);
