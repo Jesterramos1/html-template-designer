@@ -273,7 +273,14 @@
             const endPoint = line.querySelector('.end-point');
             const rotateHandle = line.querySelector('.rotate-handle');
 
-            // Line movement
+            // Helper function to get current rotation angle in radians
+            const getRotationAngle = () => {
+                const transform = line.style.transform || '';
+                const match = transform.match(/rotate\((\d+)deg\)/);
+                return match ? parseInt(match[1]) * Math.PI / 180 : 0;
+            };
+
+            // Line movement (when dragging the line itself)
             line.addEventListener('mousedown', (e) => {
                 if (!this.dragEnabled || e.target !== line) return;
                 e.preventDefault();
@@ -301,25 +308,39 @@
                 document.addEventListener('mouseup', onMouseUp);
             });
 
-            // Start point movement
+            // Start point movement - accounts for rotation
             startPoint.addEventListener('mousedown', (e) => {
                 e.stopPropagation();
                 e.preventDefault();
 
                 const startX = e.clientX;
                 const startY = e.clientY;
-                const lineRect = line.getBoundingClientRect();
-                const parentRect = document.getElementById('formWrapper').getBoundingClientRect();
+                const angle = getRotationAngle();
+                const cosAngle = Math.cos(angle);
+                const sinAngle = Math.sin(angle);
+
+                const startLeft = parseInt(line.style.left);
+                const startTop = parseInt(line.style.top);
+                const startWidth = parseInt(line.style.width);
+                const startHeight = parseInt(line.style.height);
 
                 const onMouseMove = (moveEvent) => {
                     const dx = moveEvent.clientX - startX;
                     const dy = moveEvent.clientY - startY;
 
-                    // Calculate new dimensions
-                    const newWidth = Math.max(1, lineRect.width + dx);
-                    const newHeight = Math.max(1, lineRect.height + dy);
+                    // Rotate the mouse movement to match line orientation
+                    const rotatedDx = dx * cosAngle + dy * sinAngle;
+                    const rotatedDy = -dx * sinAngle + dy * cosAngle;
 
-                    // Update line dimensions
+                    // Calculate new position and dimensions
+                    const newLeft = startLeft + rotatedDx;
+                    const newTop = startTop + rotatedDy;
+                    const newWidth = Math.max(1, startWidth - rotatedDx);
+                    const newHeight = Math.max(1, startHeight - rotatedDy);
+
+                    // Update line position and dimensions
+                    line.style.left = newLeft + 'px';
+                    line.style.top = newTop + 'px';
                     line.style.width = newWidth + 'px';
                     line.style.height = newHeight + 'px';
                 };
@@ -334,25 +355,33 @@
                 document.addEventListener('mouseup', onMouseUp);
             });
 
-            // End point movement
+            // End point movement - accounts for rotation
             endPoint.addEventListener('mousedown', (e) => {
                 e.stopPropagation();
                 e.preventDefault();
 
                 const startX = e.clientX;
                 const startY = e.clientY;
-                const lineRect = line.getBoundingClientRect();
-                const parentRect = document.getElementById('formWrapper').getBoundingClientRect();
+                const angle = getRotationAngle();
+                const cosAngle = Math.cos(angle);
+                const sinAngle = Math.sin(angle);
+
+                const startWidth = parseInt(line.style.width);
+                const startHeight = parseInt(line.style.height);
 
                 const onMouseMove = (moveEvent) => {
                     const dx = moveEvent.clientX - startX;
                     const dy = moveEvent.clientY - startY;
 
-                    // Calculate new dimensions
-                    const newWidth = Math.max(1, lineRect.width + dx);
-                    const newHeight = Math.max(1, lineRect.height + dy);
+                    // Rotate the mouse movement to match line orientation
+                    const rotatedDx = dx * cosAngle + dy * sinAngle;
+                    const rotatedDy = -dx * sinAngle + dy * cosAngle;
 
-                    // Update line dimensions
+                    // Calculate new dimensions
+                    const newWidth = Math.max(1, startWidth + rotatedDx);
+                    const newHeight = Math.max(1, startHeight + rotatedDy);
+
+                    // Update line dimensions (position stays the same)
                     line.style.width = newWidth + 'px';
                     line.style.height = newHeight + 'px';
                 };
@@ -889,10 +918,19 @@
             const currentTop = parseInt(duplicate.style.top);
             duplicate.style.left = (currentLeft) + 'px';
             duplicate.style.top = (currentTop + 15) + 'px';
-            //duplicate.style.top = (currentTop + 528) + 'px';
 
             document.getElementById('formWrapper').appendChild(duplicate);
-            this.setupFieldEvents(duplicate);
+
+            // Setup appropriate events based on field type
+            if (duplicate.classList.contains('line')) {
+                this.setupLineEvents(duplicate);
+            } else if (duplicate.classList.contains('shape')) {
+                this.setupShapeEvents(duplicate);
+                this.addResizeHandles(duplicate);
+            } else {
+                this.setupFieldEvents(duplicate);
+            }
+
             this.selectField(duplicate);
             this.updateFieldList();
             this.saveState();
