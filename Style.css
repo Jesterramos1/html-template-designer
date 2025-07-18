@@ -327,7 +327,7 @@ body {
 }
 
 .shape {
-    min-width: 30px;
+    min-width: .5px;
     min-height: 30px;
     cursor: move;
     background-color: transparent !important;
@@ -336,8 +336,9 @@ body {
 
 .line {
     min-width: 30px;
-    min-height: 1px;
-    background-color: #000;
+    min-height: 0;
+    border-top: 2px solid #000;
+    background-color: transparent !important;
     transform-origin: 0 0;
     cursor: move;
     z-index: 2 !important;
@@ -355,12 +356,12 @@ body {
 
     .line-endpoint.start-point {
         left: -5px;
-        top: -5px;
+        top: -6px;
     }
 
     .line-endpoint.end-point {
         right: -5px;
-        bottom: -5px;
+        bottom: -6px;
     }
 
 .resize-handle {

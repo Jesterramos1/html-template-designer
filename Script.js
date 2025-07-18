@@ -138,8 +138,9 @@
             line.style.top = '50px';
             line.style.left = '50px';
             line.style.width = '100px';
-            line.style.height = '2px';
-            line.style.backgroundColor = '#000';
+            line.style.height = '0px'; // Height is now 0 since we're using border
+            line.style.borderTop = '1px solid #000'; // Use border-top instead of background
+            line.style.backgroundColor = 'transparent'; // Ensure no background
             line.style.transformOrigin = '0 0';
 
             // Create endpoints
@@ -170,7 +171,7 @@
             // Create rotate handle
             const rotateHandle = document.createElement('div');
             rotateHandle.className = 'rotate-handle';
-            rotateHandle.title = 'Rotate 90�';
+            rotateHandle.title = 'Rotate 90°';
 
             line.appendChild(startPoint);
             line.appendChild(endPoint);
@@ -272,7 +273,14 @@
             const endPoint = line.querySelector('.end-point');
             const rotateHandle = line.querySelector('.rotate-handle');
 
-            // Line movement
+            // Helper function to get current rotation angle in radians
+            const getRotationAngle = () => {
+                const transform = line.style.transform || '';
+                const match = transform.match(/rotate\((\d+)deg\)/);
+                return match ? parseInt(match[1]) * Math.PI / 180 : 0;
+            };
+
+            // Line movement (when dragging the line itself)
             line.addEventListener('mousedown', (e) => {
                 if (!this.dragEnabled || e.target !== line) return;
                 e.preventDefault();
@@ -300,25 +308,39 @@
                 document.addEventListener('mouseup', onMouseUp);
             });
 
-            // Start point movement
+            // Start point movement - accounts for rotation
             startPoint.addEventListener('mousedown', (e) => {
                 e.stopPropagation();
                 e.preventDefault();
 
                 const startX = e.clientX;
                 const startY = e.clientY;
-                const lineRect = line.getBoundingClientRect();
-                const parentRect = document.getElementById('formWrapper').getBoundingClientRect();
+                const angle = getRotationAngle();
+                const cosAngle = Math.cos(angle);
+                const sinAngle = Math.sin(angle);
+
+                const startLeft = parseInt(line.style.left);
+                const startTop = parseInt(line.style.top);
+                const startWidth = parseInt(line.style.width);
+                const startHeight = parseInt(line.style.height);
 
                 const onMouseMove = (moveEvent) => {
                     const dx = moveEvent.clientX - startX;
                     const dy = moveEvent.clientY - startY;
 
-                    // Calculate new dimensions
-                    const newWidth = Math.max(1, lineRect.width + dx);
-                    const newHeight = Math.max(1, lineRect.height + dy);
+                    // Rotate the mouse movement to match line orientation
+                    const rotatedDx = dx * cosAngle + dy * sinAngle;
+                    const rotatedDy = -dx * sinAngle + dy * cosAngle;
 
-                    // Update line dimensions
+                    // Calculate new position and dimensions
+                    const newLeft = startLeft + rotatedDx;
+                    const newTop = startTop + rotatedDy;
+                    const newWidth = Math.max(1, startWidth - rotatedDx);
+                    const newHeight = Math.max(1, startHeight - rotatedDy);
+
+                    // Update line position and dimensions
+                    line.style.left = newLeft + 'px';
+                    line.style.top = newTop + 'px';
                     line.style.width = newWidth + 'px';
                     line.style.height = newHeight + 'px';
                 };
@@ -333,25 +355,33 @@
                 document.addEventListener('mouseup', onMouseUp);
             });
 
-            // End point movement
+            // End point movement - accounts for rotation
             endPoint.addEventListener('mousedown', (e) => {
                 e.stopPropagation();
                 e.preventDefault();
 
                 const startX = e.clientX;
                 const startY = e.clientY;
-                const lineRect = line.getBoundingClientRect();
-                const parentRect = document.getElementById('formWrapper').getBoundingClientRect();
+                const angle = getRotationAngle();
+                const cosAngle = Math.cos(angle);
+                const sinAngle = Math.sin(angle);
+
+                const startWidth = parseInt(line.style.width);
+                const startHeight = parseInt(line.style.height);
 
                 const onMouseMove = (moveEvent) => {
                     const dx = moveEvent.clientX - startX;
                     const dy = moveEvent.clientY - startY;
 
-                    // Calculate new dimensions
-                    const newWidth = Math.max(1, lineRect.width + dx);
-                    const newHeight = Math.max(1, lineRect.height + dy);
+                    // Rotate the mouse movement to match line orientation
+                    const rotatedDx = dx * cosAngle + dy * sinAngle;
+                    const rotatedDy = -dx * sinAngle + dy * cosAngle;
 
-                    // Update line dimensions
+                    // Calculate new dimensions
+                    const newWidth = Math.max(1, startWidth + rotatedDx);
+                    const newHeight = Math.max(1, startHeight + rotatedDy);
+
+                    // Update line dimensions (position stays the same)
                     line.style.width = newWidth + 'px';
                     line.style.height = newHeight + 'px';
                 };
@@ -587,113 +617,115 @@
 
             if (field.classList.contains('label') || field.classList.contains('field') && !field.classList.contains('shape') && !field.classList.contains('line')) {
                 textProps = `
-                            <div class="form-group">
-                                <label>Text</label>
-                                <input type="text" class="form-control" id="propText" value="${field.textContent}">
-                            </div>
-                            <div class="form-group">
-                                <label>Text Alignment</label>
-                                <div class="alignment-buttons">
-                                    <button class="btn btn-secondary ${style.textAlign === 'left' ? 'active' : ''}" id="alignLeft">Left</button>
-                                    <button class="btn btn-secondary ${style.textAlign === 'center' ? 'active' : ''}" id="alignCenter">Center</button>
-                                    <button class="btn btn-secondary ${style.textAlign === 'right' ? 'active' : ''}" id="alignRight">Right</button>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label>Font Size (px)</label>
-                                <input type="number" class="form-control" id="propFontSize" value="${parseInt(style.fontSize)}" min="6" max="72">
-                            </div>
-                            <div class="form-group">
-                                <label>Font Weight</label>
-                                <select class="form-control" id="propFontWeight">
-                                    <option value="normal" ${style.fontWeight === 'normal' ? 'selected' : ''}>Normal</option>
-                                    <option value="bold" ${style.fontWeight === 'bold' ? 'selected' : ''}>Bold</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Text Decoration</label>
-                                <select class="form-control" id="propTextDecoration">
-                                    <option value="none" ${style.textDecoration === 'none' ? 'selected' : ''}>None</option>
-                                    <option value="underline" ${style.textDecoration.includes('underline') ? 'selected' : ''}>Underline</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Text Color</label>
-                                <input type="color" class="color-picker" id="propTextColor" value="${this.rgbToHex(style.color)}">
-                            </div>
-                        `;
+                    <div class="form-group">
+                        <label>Text</label>
+                        <input type="text" class="form-control" id="propText" value="${field.textContent}">
+                    </div>
+                    <div class="form-group">
+                        <label>Text Alignment</label>
+                        <div class="alignment-buttons">
+                            <button class="btn btn-secondary ${style.textAlign === 'left' ? 'active' : ''}" id="alignLeft">Left</button>
+                            <button class="btn btn-secondary ${style.textAlign === 'center' ? 'active' : ''}" id="alignCenter">Center</button>
+                            <button class="btn btn-secondary ${style.textAlign === 'right' ? 'active' : ''}" id="alignRight">Right</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Font Size (px)</label>
+                        <input type="number" class="form-control" id="propFontSize" value="${parseInt(style.fontSize)}" min="6" max="72">
+                    </div>
+                    <div class="form-group">
+                        <label>Font Weight</label>
+                        <select class="form-control" id="propFontWeight">
+                            <option value="normal" ${style.fontWeight === 'normal' ? 'selected' : ''}>Normal</option>
+                            <option value="bold" ${style.fontWeight === 'bold' ? 'selected' : ''}>Bold</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Text Decoration</label>
+                        <select class="form-control" id="propTextDecoration">
+                            <option value="none" ${style.textDecoration === 'none' ? 'selected' : ''}>None</option>
+                            <option value="underline" ${style.textDecoration.includes('underline') ? 'selected' : ''}>Underline</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Text Color</label>
+                        <input type="color" class="color-picker" id="propTextColor" value="${this.rgbToHex(style.color)}">
+                    </div>
+                `;
             }
 
             if (field.classList.contains('shape')) {
                 shapeProps = `
-                            <div class="form-group">
-                                <label>Border Width (px)</label>
-                                <input type="number" class="form-control" id="propBorderWidth" value="${parseInt(style.borderWidth)}" min="0" max="10">
-                            </div>
-                            <div class="form-group">
-                                <label>Border Color</label>
-                                <input type="color" class="color-picker" id="propBorderColor" value="${this.rgbToHex(style.borderColor)}">
-                            </div>
-                        `;
+                    <div class="form-group">
+                        <label>Border Width (px)</label>
+                        <input type="number" class="form-control" id="propBorderWidth" value="${parseInt(style.borderWidth)}" min="0" max="10">
+                    </div>
+                    <div class="form-group">
+                        <label>Border Color</label>
+                        <input type="color" class="color-picker" id="propBorderColor" value="${this.rgbToHex(style.borderColor)}">
+                    </div>
+                `;
             }
 
             if (field.classList.contains('line')) {
                 lineProps = `
-                            <div class="form-group">
-                                <label>Line Thickness (px)</label>
-                                <input type="number" class="form-control" id="propLineThickness" value="${parseInt(style.height)}" min="1" max="20">
-                            </div>
-                            <div class="form-group">
-                                <label>Line Color</label>
-                                <input type="color" class="color-picker" id="propLineColor" value="${this.rgbToHex(style.backgroundColor)}">
-                            </div>
-                        `;
+                    <div class="form-group">
+                        <label>Line Thickness (px)</label>
+                        <input type="number" class="form-control" id="propLineThickness" 
+                               value="${parseInt(style.borderTopWidth) || 2}" min="1" max="20">
+                    </div>
+                    <div class="form-group">
+                        <label>Line Color</label>
+                        <input type="color" class="color-picker" id="propLineColor" 
+                               value="${this.rgbToHex(style.borderTopColor) || '#000000'}">
+                    </div>
+                `;
             }
 
             content.innerHTML = `
-                        <div class="form-group">
-                            <label>Element Type</label>
-                            <input type="text" class="form-control" id="propElementType" 
-                                    value="${field.classList.contains('shape') ? 'Shape' :
+                <div class="form-group">
+                    <label>Element Type</label>
+                    <input type="text" class="form-control" id="propElementType" 
+                           value="${field.classList.contains('shape') ? 'Shape' :
                     field.classList.contains('line') ? 'Line' :
                         field.classList.contains('label') ? 'Label' : 'Field'}" disabled>
-                        </div>
-                        
-                        ${textProps}
-                        ${shapeProps}
-                        ${lineProps}
-                        
-                        <div class="input-group">
-                            <div class="input-group-sm">
-                                <label>Width (px)</label>
-                                <input type="number" class="form-control" id="propWidth" 
-                                        value="${parseInt(style.width)}" min="10">
-                            </div>
-                            <div class="input-group-sm">
-                                <label>Height (px)</label>
-                                <input type="number" class="form-control" id="propHeight" 
-                                        value="${parseInt(style.height)}" min="10">
-                            </div>
-                        </div>
-                        
-                        <div class="input-group">
-                            <div class="input-group-sm">
-                                <label>Left (px)</label>
-                                <input type="number" class="form-control" id="propLeft" 
-                                        value="${parseInt(style.left)}" min="0">
-                            </div>
-                            <div class="input-group-sm">
-                                <label>Top (px)</label>
-                                <input type="number" class="form-control" id="propTop" 
-                                        value="${parseInt(style.top)}" min="0">
-                            </div>
-                        </div>
-                        
-                        <div class="form-group">
-                            <button class="btn btn-danger" id="deleteField">Delete</button>
-                            <button class="btn btn-secondary" id="duplicateField">Duplicate</button>
-                        </div>
-                    `;
+                </div>
+                
+                ${textProps}
+                ${shapeProps}
+                ${lineProps}
+                
+                <div class="input-group">
+                    <div class="input-group-sm">
+                        <label>Width (px)</label>
+                        <input type="number" class="form-control" id="propWidth" 
+                               value="${parseInt(style.width)}" min="10">
+                    </div>
+                    <div class="input-group-sm">
+                        <label>Height (px)</label>
+                        <input type="number" class="form-control" id="propHeight" 
+                               value="${parseInt(style.height)}" min="10">
+                    </div>
+                </div>
+                
+                <div class="input-group">
+                    <div class="input-group-sm">
+                        <label>Left (px)</label>
+                        <input type="number" class="form-control" id="propLeft" 
+                               value="${parseInt(style.left)}" min="0">
+                    </div>
+                    <div class="input-group-sm">
+                        <label>Top (px)</label>
+                        <input type="number" class="form-control" id="propTop" 
+                               value="${parseInt(style.top)}" min="0">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <button class="btn btn-danger" id="deleteField">Delete</button>
+                    <button class="btn btn-secondary" id="duplicateField">Duplicate</button>
+                </div>
+            `;
 
             this.bindPropertyEvents(field);
         }
@@ -784,17 +816,18 @@
 
             // Line properties
             const propLineThickness = document.getElementById('propLineThickness');
-            if (propLineThickness) {
+            if (propLineThickness && field.classList.contains('line')) {
                 propLineThickness.addEventListener('input', (e) => {
-                    field.style.height = e.target.value + 'px';
+                    field.style.borderTopWidth = e.target.value + 'px';
                     this.saveState();
                 });
             }
 
             const propLineColor = document.getElementById('propLineColor');
-            if (propLineColor) {
+            if (propLineColor && field.classList.contains('line')) {
                 propLineColor.addEventListener('input', (e) => {
-                    field.style.backgroundColor = e.target.value;
+                    field.style.borderTopColor = e.target.value;
+                    field.style.borderTopStyle = 'solid';
                     this.saveState();
                 });
             }
@@ -885,10 +918,19 @@
             const currentTop = parseInt(duplicate.style.top);
             duplicate.style.left = (currentLeft) + 'px';
             duplicate.style.top = (currentTop + 15) + 'px';
-            //duplicate.style.top = (currentTop + 528) + 'px';
 
             document.getElementById('formWrapper').appendChild(duplicate);
-            this.setupFieldEvents(duplicate);
+
+            // Setup appropriate events based on field type
+            if (duplicate.classList.contains('line')) {
+                this.setupLineEvents(duplicate);
+            } else if (duplicate.classList.contains('shape')) {
+                this.setupShapeEvents(duplicate);
+                this.addResizeHandles(duplicate);
+            } else {
+                this.setupFieldEvents(duplicate);
+            }
+
             this.selectField(duplicate);
             this.updateFieldList();
             this.saveState();
@@ -1104,6 +1146,16 @@
 
                 Object.assign(field.style, fieldData.style);
 
+                // Special handling for lines to ensure border properties
+                if (fieldData.className.includes('line')) {
+                    if (!field.style.borderTop && !field.style.borderTopWidth) {
+                        // If no border properties exist, set defaults
+                        field.style.borderTop = '1px solid #000';
+                        field.style.height = '0px';
+                        field.style.backgroundColor = 'transparent';
+                    }
+                }
+
                 if (fieldData.className.includes('rectangle')) {
                     this.addResizeHandles(field);
                 }
@@ -1158,103 +1210,129 @@
 
         downloadHtml() {
             const formWrapper = document.getElementById('formWrapper').cloneNode(true);
-
-            // Remove editor-specific elements
-            formWrapper.querySelectorAll('.rulers, .guideline').forEach(el => el.remove());
-            formWrapper.querySelectorAll('.resize-handle, .line-endpoint, .rotate-handle').forEach(el => {
-                el.style.display = 'none';
-            });
-
-            formWrapper.classList.remove('grid-bg');
-
-            // Clean up field classes and styles
-            formWrapper.querySelectorAll('.field').forEach(field => {
-                field.classList.remove('selected', 'dragging');
-                field.contentEditable = false;
-                field.style.border = field.style.borderStyle === 'none' ? 'none' : field.style.border;
-            });
-
-            const cssLines = [];
-            document.querySelectorAll('.field').forEach(field => {
-                const className = Array.from(field.classList).find(c => c.startsWith('field-'));
-                if (className) {
-                    const style = getComputedStyle(field);
-                    cssLines.push(`
-                                .${className} {
-                                    position: absolute;
-                                    top: ${field.style.top};
-                                    left: ${field.style.left};
-                                    width: ${field.style.width || 'auto'};
-                                    height: ${field.style.height || 'auto'};
-                                    text-align: ${field.style.textAlign || 'left'};
-                                    font-size: ${field.style.fontSize || style.fontSize};
-                                    font-family: ${field.style.fontFamily || style.fontFamily};
-                                    font-weight: ${field.style.fontWeight || style.fontWeight};
-                                    text-decoration: ${field.style.textDecoration || style.textDecoration};
-                                    color: ${field.style.color || style.color};
-                                    background-color: ${field.style.backgroundColor || 'transparent'};
-                                    transform: ${field.style.transform || 'none'};
-                                }`);
-                }
-            });
-
             const canvasWidth = document.getElementById('canvasWidth').value;
             const canvasHeight = document.getElementById('canvasHeight').value;
 
+            // Remove editor-specific elements
+            formWrapper.querySelectorAll('.rulers, .guideline').forEach(el => el.remove());
+            formWrapper.querySelectorAll('.resize-handle, .line-endpoint, .rotate-handle').forEach(el => el.remove());
+            formWrapper.classList.remove('grid-bg');
+
+            // Process all fields for clean output
+            const cssLines = [];
+            const usedClasses = new Set();
+
+            formWrapper.querySelectorAll('.field').forEach(field => {
+                // Remove editor-specific classes and attributes
+                field.classList.remove('selected', 'dragging', 'draggable');
+                field.removeAttribute('contenteditable');
+
+                // Get the field's class name
+                let className = Array.from(field.classList).find(c => c.startsWith('field-'));
+                if (!className) {
+                    className = `field-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+                    field.classList.add(className);
+                }
+
+                // Skip if we've already processed this class
+                if (usedClasses.has(className)) return;
+                usedClasses.add(className);
+
+                // Build CSS rules from inline styles
+                const style = field.style;
+                const styleRules = [];
+
+                // Common properties
+                if (style.top) styleRules.push(`top: ${style.top}`);
+                if (style.left) styleRules.push(`left: ${style.left}`);
+                if (style.width) styleRules.push(`width: ${style.width}`);
+                if (style.height) styleRules.push(`height: ${style.height}`);
+
+                // Special handling for lines
+                if (field.classList.contains('line')) {
+                    if (style.borderTop) {
+                        styleRules.push(`border-top: ${style.borderTop}`);
+                    } else {
+                        // Default line style if none specified
+                        styleRules.push('border-top: 1px solid #000');
+                    }
+                    styleRules.push('height: 0');
+                    styleRules.push('background-color: transparent');
+                    // Preserve transform and transform-origin for rotated lines
+                    if (style.transform) {
+                        styleRules.push(`transform: ${style.transform}`);
+                        styleRules.push(`transform-origin: ${style.transformOrigin || '0 0'}`);
+                    }
+                } else {
+                    // Regular field styles
+                    styleRules.push(`font-size: ${style.fontSize || '10px'}`);
+                    styleRules.push(`text-align: ${style.textAlign || 'left'}`);
+                    if (style.fontSize) styleRules.push(`font-size: ${style.fontSize}`);
+                    if (style.fontWeight) styleRules.push(`font-weight: ${style.fontWeight}`);
+                    if (style.textDecoration) styleRules.push(`text-decoration: ${style.textDecoration}`);
+                    if (style.color) styleRules.push(`color: ${style.color}`);
+                    if (style.backgroundColor) styleRules.push(`background-color: ${style.backgroundColor}`);
+                    if (style.border) styleRules.push(`border: ${style.border}`);
+                }
+
+                // Add position absolute (required for proper rendering)
+                styleRules.push('position: absolute');
+
+                // Add to CSS lines if we have any rules
+                if (styleRules.length > 0) {
+                    cssLines.push(`.${className} { ${styleRules.join('; ')} }`);
+                }
+
+                // Clear inline styles (they'll be in the stylesheet)
+                field.removeAttribute('style');
+            });
+
             const htmlContent = `<!DOCTYPE html>
-                        <html lang="en">
-                            <head>
-                                <meta charset="UTF-8">
-                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                                <title>Generated Template</title>
-                                <style>
-                                    body {
-                                        margin: 0;
-                                        padding: 0;
-                                        font-family: Arial, sans-serif;
-                                    }
+                                <html lang="en">
+                                    <head>
+                                        <meta charset="UTF-8">
+                                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                                        <title>Generated Template</title>
+                                        <style>
+                                            body {
+                                                margin: 0;
+                                                padding: 0;
+                                                font-family: Arial, sans-serif;
+                                            }
 
-                                    .form-wrapper {
-                                        position: relative;
-                                        width: ${canvasWidth}in;
-                                        height: ${canvasHeight}in;
-                                        border: 1px solid #000;
-                                        margin: 0 auto;
-                                        background: white;
-                                    }
+                                            .form-wrapper {
+                                                position: relative;
+                                                width: ${canvasWidth}in;
+                                                height: ${canvasHeight}in;
+                                                border: 1px solid #000;
+                                                margin: 0 auto;
+                                                background: white;
+                                            }
 
-                                    .field {
-                                        position: absolute;
-                                        font-weight: normal;
-                                        padding: 0px;
-                                        font-size: 10px;
-                                    }
+                                            ${cssLines.join('\n')}
 
-                                    ${cssLines.join('\n')}
+                                            @media print {
+                                                @page {
+                                                    size: ${canvasWidth}in ${canvasHeight}in;
+                                                    margin: 0;
+                                                }
 
-                                    @media print {
-                                        @page {
-                                            size: ${canvasWidth}in ${canvasHeight}in;
-                                            margin: 0;
-                                        }
+                                                body {
+                                                    margin: 0;
+                                                    padding: 0;
+                                                }
 
-                                        body {
-                                            margin: 0;
-                                            padding: 0;
-                                        }
-
-                                        .form-wrapper {
-                                            border: none;
-                                            margin: 0;
-                                        }
-                                    }
-                                </style>
-
-                            </head>
-                            <body>
-                                ${formWrapper.outerHTML}
-                            </body>
-                        </html>`;
+                                                .form-wrapper {
+                                                    border: none;
+                                                    margin: 0;
+                                                }
+                                            }
+                                        </style>
+                                    </head>
+                                    <body>
+                                        ${formWrapper.outerHTML}
+                                    </body>
+                                </html>`;
 
             const blob = new Blob([htmlContent], { type: 'text/html' });
             const url = URL.createObjectURL(blob);
@@ -1288,7 +1366,19 @@
             formWrapper.querySelectorAll('.field').forEach(field => {
                 field.classList.remove('selected', 'dragging');
                 field.contentEditable = false;
-                field.style.border = field.style.borderStyle === 'none' ? 'none' : field.style.border;
+
+                // Special handling for lines
+                if (field.classList.contains('line')) {
+                    if (!field.style.borderTop && !field.style.borderTopWidth) {
+                        // Default line style if none specified
+                        field.style.borderTop = '1px solid #000';
+                        field.style.height = '0';
+                        field.style.backgroundColor = 'transparent';
+                    }
+                } else {
+                    // Regular fields
+                    field.style.border = field.style.borderStyle === 'none' ? 'none' : field.style.border;
+                }
             });
 
             const canvasWidth = document.getElementById('canvasWidth').value;
@@ -1383,6 +1473,7 @@
                     return;
                 }
 
+                // Clean up the imported template
                 const container = document.querySelector('.canvas-container');
                 const oldWrapper = document.getElementById('formWrapper');
                 if (oldWrapper) oldWrapper.remove();
@@ -1390,10 +1481,76 @@
                 importedWrapper.id = 'formWrapper';
                 container.insertBefore(importedWrapper, container.querySelector('.zoom-controls'));
 
-                // Reinitialize field events and add editor-specific styles
+                // First collect all style rules from the document
+                const styleRules = {};
+                try {
+                    // Parse style tags
+                    doc.querySelectorAll('style').forEach(styleTag => {
+                        const css = styleTag.textContent;
+                        // Match CSS rules for field classes
+                        const ruleMatches = css.matchAll(/\.(field-[^\s{]+)\s*{([^}]+)}/g);
+                        for (const match of ruleMatches) {
+                            const className = match[1].trim();
+                            styleRules[className] = match[2].trim();
+                        }
+                    });
+                } catch (e) {
+                    console.error("Error parsing styles:", e);
+                }
+
+                // Process all fields - apply ONLY stylesheet styles
                 importedWrapper.querySelectorAll('.field').forEach(field => {
+                    // Find all field-related classes
+                    const fieldClasses = Array.from(field.classList).filter(c => c.startsWith('field-'));
+                    if (fieldClasses.length === 0) return;
+
+                    // Clear all inline styles except contentEditable
+                    const wasEditable = field.contentEditable === 'true';
+                    field.removeAttribute('style');
+                    field.contentEditable = wasEditable;
+
+                    // Apply styles from all matching class rules
+                    fieldClasses.forEach(className => {
+                        if (styleRules[className]) {
+                            const declarations = styleRules[className].split(';');
+                            declarations.forEach(declaration => {
+                                const [prop, value] = declaration.split(':').map(p => p.trim());
+                                if (prop && value) {
+                                    // Convert CSS property names to JS style names
+                                    const jsProp = prop.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
+                                    field.style[jsProp] = value;
+                                }
+                            });
+                        }
+                    });
+
+                    // Special handling for lines
+                    if (field.classList.contains('line')) {
+                        if (!field.style.borderTop && !field.style.borderTopWidth) {
+                            // Default line styling if no border properties exist
+                            field.style.borderTop = '1px solid #000';
+                            field.style.height = '0';
+                            field.style.backgroundColor = 'transparent';
+                        }
+                    }
+
+                    // Special handling for rectangle shapes
+                    if (field.classList.contains('rectangle') &&
+                        !field.style.border &&
+                        !field.style.borderWidth &&
+                        !field.style.borderColor) {
+                        // Apply default rectangle styling if no border properties exist
+                        field.style.border = '1px solid #000';
+                        field.style.backgroundColor = 'transparent';
+                    }
+
+                    // Force these editor-required styles if not set
+                    if (!field.style.position) {
+                        field.style.position = 'absolute';
+                    }
+
+                    // Setup editor functionality
                     this.setupFieldEvents(field);
-                    field.style.padding = '0px 1px';
 
                     if (field.classList.contains('rectangle')) {
                         this.addResizeHandles(field);
