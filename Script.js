@@ -31,7 +31,10 @@
             document.getElementById('addLabelBtn').addEventListener('click', () => this.addLabel());
             document.getElementById('toggleLabelsBtn').addEventListener('click', () => this.toggleLabels());
             document.getElementById('addRectangleBtn').addEventListener('click', () => this.addRectangle());
-            document.getElementById('addLineBtn').addEventListener('click', () => this.addLine());
+            //document.getElementById('addLineBtn').addEventListener('click', () => this.addLine());
+            document.getElementById('addHLineBtn').addEventListener('click', () => this.addHorizontalLine());
+            document.getElementById('addVLineBtn').addEventListener('click', () => this.addVerticalLine());
+            document.getElementById('addImageBtn').addEventListener('click', () => this.addImagePlaceholder());
 
             // Canvas size controls
             document.getElementById('sizePreset').addEventListener('change', (e) => this.setSizePreset(e.target.value));
@@ -204,6 +207,100 @@
             this.saveState();
         }
 
+        addHorizontalLine() {
+            const nextNum = this.getNextFieldNumber('hline');
+            this.fieldCounter = Math.max(this.fieldCounter, nextNum);
+
+            const line = document.createElement('div');
+            line.className = 'field label draggable hline';
+            line.classList.add(`field-hline-${this.fieldCounter}`);
+            line.style.top = '50px';
+            line.style.left = '50px';
+            line.style.width = '100px';
+            line.style.height = '0px';
+            line.style.borderTop = '1px solid #000';
+            line.style.backgroundColor = 'transparent';
+
+            // Create endpoints for horizontal line
+            const startPoint = document.createElement('div');
+            startPoint.className = 'line-endpoint start-point';
+            startPoint.style.left = '-5px';
+            startPoint.style.top = '-5px';
+            startPoint.style.display = 'none';
+
+            const endPoint = document.createElement('div');
+            endPoint.className = 'line-endpoint end-point';
+            endPoint.style.right = '-5px';
+            endPoint.style.top = '-5px';
+            endPoint.style.display = 'none';
+
+            line.appendChild(startPoint);
+            line.appendChild(endPoint);
+
+            document.getElementById('formWrapper').appendChild(line);
+            this.setupLineEvents(line, 'horizontal');
+            this.updateFieldList();
+            this.selectField(line);
+            this.saveState();
+        }
+
+        addVerticalLine() {
+            const nextNum = this.getNextFieldNumber('vline');
+            this.fieldCounter = Math.max(this.fieldCounter, nextNum);
+
+            const line = document.createElement('div');
+            line.className = 'field label draggable vline';
+            line.classList.add(`field-vline-${this.fieldCounter}`);
+            line.style.top = '50px';
+            line.style.left = '50px';
+            line.style.width = '0px';
+            line.style.height = '100px';
+            line.style.borderRight = '1px solid #000';
+            line.style.backgroundColor = 'transparent';
+
+            // Create endpoints for vertical line
+            const startPoint = document.createElement('div');
+            startPoint.className = 'line-endpoint start-point';
+            startPoint.style.left = '-5px';
+            startPoint.style.top = '-5px';
+            startPoint.style.display = 'none';
+
+            const endPoint = document.createElement('div');
+            endPoint.className = 'line-endpoint end-point';
+            endPoint.style.left = '-5px';
+            endPoint.style.bottom = '-5px';
+            endPoint.style.display = 'none';
+
+            line.appendChild(startPoint);
+            line.appendChild(endPoint);
+
+            document.getElementById('formWrapper').appendChild(line);
+            this.setupLineEvents(line, 'vertical');
+            this.updateFieldList();
+            this.selectField(line);
+            this.saveState();
+        }
+
+        addImagePlaceholder() {
+            const nextNum = this.getNextFieldNumber('image');
+            this.fieldCounter = Math.max(this.fieldCounter, nextNum);
+
+            const img = document.createElement('div');
+            img.className = 'field label draggable image-placeholder';
+            img.classList.add(`field-image-${this.fieldCounter}`);
+            img.style.top = '50px';
+            img.style.left = '50px';
+            img.style.width = '100px';
+            img.style.height = '100px';
+            img.innerHTML = '<span>Image Placeholder</span>';
+
+            document.getElementById('formWrapper').appendChild(img);
+            this.setupFieldEvents(img);
+            this.updateFieldList();
+            this.selectField(img);
+            this.saveState();
+        }
+
         addResizeHandles(element) {
             const positions = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
 
@@ -284,17 +381,9 @@
             });
         }
 
-        setupLineEvents(line) {
+        setupLineEvents(line, lineType) {
             const startPoint = line.querySelector('.start-point');
             const endPoint = line.querySelector('.end-point');
-            const rotateHandle = line.querySelector('.rotate-handle');
-
-            // Helper function to get current rotation angle in radians
-            const getRotationAngle = () => {
-                const transform = line.style.transform || '';
-                const match = transform.match(/rotate\((\d+)deg\)/);
-                return match ? parseInt(match[1]) * Math.PI / 180 : 0;
-            };
 
             // Line movement (when dragging the line itself)
             line.addEventListener('mousedown', (e) => {
@@ -324,17 +413,13 @@
                 document.addEventListener('mouseup', onMouseUp);
             });
 
-            // Start point movement - accounts for rotation
+            // Start point movement
             startPoint.addEventListener('mousedown', (e) => {
                 e.stopPropagation();
                 e.preventDefault();
 
                 const startX = e.clientX;
                 const startY = e.clientY;
-                const angle = getRotationAngle();
-                const cosAngle = Math.cos(angle);
-                const sinAngle = Math.sin(angle);
-
                 const startLeft = parseInt(line.style.left);
                 const startTop = parseInt(line.style.top);
                 const startWidth = parseInt(line.style.width);
@@ -344,21 +429,15 @@
                     const dx = moveEvent.clientX - startX;
                     const dy = moveEvent.clientY - startY;
 
-                    // Rotate the mouse movement to match line orientation
-                    const rotatedDx = dx * cosAngle + dy * sinAngle;
-                    const rotatedDy = -dx * sinAngle + dy * cosAngle;
-
-                    // Calculate new position and dimensions
-                    const newLeft = startLeft + rotatedDx;
-                    const newTop = startTop + rotatedDy;
-                    const newWidth = Math.max(1, startWidth - rotatedDx);
-                    const newHeight = Math.max(1, startHeight - rotatedDy);
-
-                    // Update line position and dimensions
-                    line.style.left = newLeft + 'px';
-                    line.style.top = newTop + 'px';
-                    line.style.width = newWidth + 'px';
-                    line.style.height = newHeight + 'px';
+                    if (lineType === 'horizontal') {
+                        // For horizontal line, only left position and width change
+                        line.style.left = (startLeft + dx) + 'px';
+                        line.style.width = (startWidth - dx) + 'px';
+                    } else {
+                        // For vertical line, only top position and height change
+                        line.style.top = (startTop + dy) + 'px';
+                        line.style.height = (startHeight - dy) + 'px';
+                    }
                 };
 
                 const onMouseUp = () => {
@@ -371,17 +450,13 @@
                 document.addEventListener('mouseup', onMouseUp);
             });
 
-            // End point movement - accounts for rotation
+            // End point movement
             endPoint.addEventListener('mousedown', (e) => {
                 e.stopPropagation();
                 e.preventDefault();
 
                 const startX = e.clientX;
                 const startY = e.clientY;
-                const angle = getRotationAngle();
-                const cosAngle = Math.cos(angle);
-                const sinAngle = Math.sin(angle);
-
                 const startWidth = parseInt(line.style.width);
                 const startHeight = parseInt(line.style.height);
 
@@ -389,17 +464,13 @@
                     const dx = moveEvent.clientX - startX;
                     const dy = moveEvent.clientY - startY;
 
-                    // Rotate the mouse movement to match line orientation
-                    const rotatedDx = dx * cosAngle + dy * sinAngle;
-                    const rotatedDy = -dx * sinAngle + dy * cosAngle;
-
-                    // Calculate new dimensions
-                    const newWidth = Math.max(1, startWidth + rotatedDx);
-                    const newHeight = Math.max(1, startHeight + rotatedDy);
-
-                    // Update line dimensions (position stays the same)
-                    line.style.width = newWidth + 'px';
-                    line.style.height = newHeight + 'px';
+                    if (lineType === 'horizontal') {
+                        // For horizontal line, only width changes
+                        line.style.width = (startWidth + dx) + 'px';
+                    } else {
+                        // For vertical line, only height changes
+                        line.style.height = (startHeight + dy) + 'px';
+                    }
                 };
 
                 const onMouseUp = () => {
@@ -410,16 +481,6 @@
 
                 document.addEventListener('mousemove', onMouseMove);
                 document.addEventListener('mouseup', onMouseUp);
-            });
-
-            // Rotate handle
-            rotateHandle.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const currentTransform = line.style.transform || 'rotate(0deg)';
-                const currentAngle = parseInt(currentTransform.match(/rotate\((\d+)deg\)/)[1]) || 0;
-                const newAngle = (currentAngle + 90) % 360;
-                line.style.transform = `rotate(${newAngle}deg)`;
-                this.saveState();
             });
 
             line.addEventListener('dblclick', () => {
@@ -600,7 +661,6 @@
             document.querySelectorAll('.field.selected').forEach(el => el.classList.remove('selected'));
             document.querySelectorAll('.resize-handle').forEach(h => h.style.display = 'none');
             document.querySelectorAll('.line-endpoint').forEach(p => p.style.display = 'none');
-            document.querySelectorAll('.rotate-handle').forEach(r => r.style.display = 'none');
 
             this.selectedField = field;
 
@@ -615,9 +675,8 @@
                 field.querySelectorAll('.resize-handle').forEach(h => h.style.display = 'block');
             }
 
-            if (field && field.classList.contains('line')) {
+            if (field && (field.classList.contains('hline') || field.classList.contains('vline'))) {
                 field.querySelectorAll('.line-endpoint').forEach(p => p.style.display = 'block');
-                field.querySelector('.rotate-handle').style.display = 'block';
             }
 
             this.updateFieldList();
@@ -630,6 +689,7 @@
             let textProps = '';
             let shapeProps = '';
             let lineProps = '';
+            let imageProps = '';
 
             if (field.classList.contains('label') || field.classList.contains('field') && !field.classList.contains('shape') && !field.classList.contains('line')) {
                 textProps = `
@@ -683,65 +743,85 @@
                 `;
             }
 
-            if (field.classList.contains('line')) {
+            if (field.classList.contains('hline') || field.classList.contains('vline')) {
+                const borderProp = field.classList.contains('hline') ? 'borderTop' : 'borderRight';
+                const thickness = parseInt(style[borderProp + 'Width']) || 1;
+                const color = this.rgbToHex(style[borderProp + 'Color']) || '#000000';
+
                 lineProps = `
                     <div class="form-group">
                         <label>Line Thickness (px)</label>
                         <input type="number" class="form-control" id="propLineThickness" 
-                               value="${parseInt(style.borderTopWidth) || 2}" min="1" max="20">
+                               value="${thickness}" min="1" max="20">
                     </div>
                     <div class="form-group">
                         <label>Line Color</label>
                         <input type="color" class="color-picker" id="propLineColor" 
-                               value="${this.rgbToHex(style.borderTopColor) || '#000000'}">
+                               value="${color}">
+                    </div>
+                `;
+            }
+
+            if (field.classList.contains('image-placeholder')) {
+                imageProps = `
+                    <div class="form-group">
+                        <label>Image Source</label>
+                        <input type="text" class="form-control" id="propImageSrc" placeholder="Enter image URL">
+                    </div>
+                    <div class="form-group">
+                        <label>Alternative Text</label>
+                        <input type="text" class="form-control" id="propImageAlt" placeholder="Enter alt text">
                     </div>
                 `;
             }
 
             content.innerHTML = `
-                <div class="form-group">
-                    <label>Element Type</label>
-                    <input type="text" class="form-control" id="propElementType" 
-                           value="${field.classList.contains('shape') ? 'Shape' :
-                    field.classList.contains('line') ? 'Line' :
-                        field.classList.contains('label') ? 'Label' : 'Field'}" disabled>
-                </div>
-                
-                ${textProps}
-                ${shapeProps}
-                ${lineProps}
-                
-                <div class="input-group">
-                    <div class="input-group-sm">
-                        <label>Width (px)</label>
-                        <input type="number" class="form-control" id="propWidth" 
-                               value="${parseInt(style.width)}" min="10">
+                    <div class="form-group">
+                        <label>Element Type</label>
+                        <input type="text" class="form-control" id="propElementType" 
+                               value="${field.classList.contains('shape') ? 'Shape' :
+                                field.classList.contains('hline') ? 'Horizontal Line' :
+                                    field.classList.contains('vline') ? 'Vertical Line' :
+                                        field.classList.contains('image-placeholder') ? 'Image' :
+                                            field.classList.contains('label') ? 'Label' : 'Field'}" disabled>
                     </div>
-                    <div class="input-group-sm">
-                        <label>Height (px)</label>
-                        <input type="number" class="form-control" id="propHeight" 
-                               value="${parseInt(style.height)}" min="10">
+        
+                    ${textProps}
+                    ${shapeProps}
+                    ${lineProps}
+                    ${imageProps}
+        
+                    <div class="input-group">
+                        <div class="input-group-sm">
+                            <label>Width (px)</label>
+                            <input type="number" class="form-control" id="propWidth" 
+                                   value="${parseInt(style.width)}" min="10">
+                        </div>
+                        <div class="input-group-sm">
+                            <label>Height (px)</label>
+                            <input type="number" class="form-control" id="propHeight" 
+                                   value="${parseInt(style.height)}" min="10">
+                        </div>
                     </div>
-                </div>
-                
-                <div class="input-group">
-                    <div class="input-group-sm">
-                        <label>Left (px)</label>
-                        <input type="number" class="form-control" id="propLeft" 
-                               value="${parseInt(style.left)}" min="0">
+        
+                    <div class="input-group">
+                        <div class="input-group-sm">
+                            <label>Left (px)</label>
+                            <input type="number" class="form-control" id="propLeft" 
+                                   value="${parseInt(style.left)}" min="0">
+                        </div>
+                        <div class="input-group-sm">
+                            <label>Top (px)</label>
+                            <input type="number" class="form-control" id="propTop" 
+                                   value="${parseInt(style.top)}" min="0">
+                        </div>
                     </div>
-                    <div class="input-group-sm">
-                        <label>Top (px)</label>
-                        <input type="number" class="form-control" id="propTop" 
-                               value="${parseInt(style.top)}" min="0">
+        
+                    <div class="form-group">
+                        <button class="btn btn-danger" id="deleteField">Delete</button>
+                        <button class="btn btn-secondary" id="duplicateField">Duplicate</button>
                     </div>
-                </div>
-                
-                <div class="form-group">
-                    <button class="btn btn-danger" id="deleteField">Delete</button>
-                    <button class="btn btn-secondary" id="duplicateField">Duplicate</button>
-                </div>
-            `;
+                `;
 
             this.bindPropertyEvents(field);
         }
@@ -789,6 +869,24 @@
                 });
             }
 
+            const propImageSrc = document.getElementById('propImageSrc');
+            if (propImageSrc) {
+                propImageSrc.addEventListener('input', (e) => {
+                    // This will be used when exporting to HTML
+                    field.dataset.src = e.target.value;
+                    this.saveState();
+                });
+            }
+
+            const propImageAlt = document.getElementById('propImageAlt');
+            if (propImageAlt) {
+                propImageAlt.addEventListener('input', (e) => {
+                    // This will be used when exporting to HTML
+                    field.dataset.alt = e.target.value;
+                    this.saveState();
+                });
+            }
+
             document.getElementById('alignLeft')?.addEventListener('click', (e) => {
                 e.preventDefault();
                 field.style.textAlign = 'left';
@@ -832,18 +930,27 @@
 
             // Line properties
             const propLineThickness = document.getElementById('propLineThickness');
-            if (propLineThickness && field.classList.contains('line')) {
+            if (propLineThickness && (field.classList.contains('hline') || field.classList.contains('vline'))) {
                 propLineThickness.addEventListener('input', (e) => {
-                    field.style.borderTopWidth = e.target.value + 'px';
+                    if (field.classList.contains('hline')) {
+                        field.style.borderTopWidth = e.target.value + 'px';
+                    } else {
+                        field.style.borderRightWidth = e.target.value + 'px';
+                    }
                     this.saveState();
                 });
             }
 
             const propLineColor = document.getElementById('propLineColor');
-            if (propLineColor && field.classList.contains('line')) {
+            if (propLineColor && (field.classList.contains('hline') || field.classList.contains('vline'))) {
                 propLineColor.addEventListener('input', (e) => {
-                    field.style.borderTopColor = e.target.value;
-                    field.style.borderTopStyle = 'solid';
+                    if (field.classList.contains('hline')) {
+                        field.style.borderTopColor = e.target.value;
+                        field.style.borderTopStyle = 'solid';
+                    } else {
+                        field.style.borderRightColor = e.target.value;
+                        field.style.borderRightStyle = 'solid';
+                    }
                     this.saveState();
                 });
             }
@@ -1232,7 +1339,7 @@
 
             // Remove editor-specific elements
             formWrapper.querySelectorAll('.rulers, .guideline').forEach(el => el.remove());
-            formWrapper.querySelectorAll('.resize-handle, .line-endpoint, .rotate-handle').forEach(el => el.remove());
+            formWrapper.querySelectorAll('.resize-handle, .line-endpoint').forEach(el => el.remove());
             formWrapper.classList.remove('grid-bg');
 
             // Process all fields for clean output
@@ -1265,22 +1372,27 @@
                 if (style.width) styleRules.push(`width: ${style.width}`);
                 if (style.height) styleRules.push(`height: ${style.height}`);
 
-                // Special handling for lines
-                if (field.classList.contains('line')) {
+                // Special handling for horizontal lines
+                if (field.classList.contains('hline')) {
                     if (style.borderTop) {
                         styleRules.push(`border-top: ${style.borderTop}`);
                     } else {
-                        // Default line style if none specified
                         styleRules.push('border-top: 1px solid #000');
                     }
                     styleRules.push('height: 0');
                     styleRules.push('background-color: transparent');
-                    // Preserve transform and transform-origin for rotated lines
-                    if (style.transform) {
-                        styleRules.push(`transform: ${style.transform}`);
-                        styleRules.push(`transform-origin: ${style.transformOrigin || '0 0'}`);
+                }
+                // Special handling for vertical lines
+                else if (field.classList.contains('vline')) {
+                    if (style.borderRight) {
+                        styleRules.push(`border-right: ${style.borderRight}`);
+                    } else {
+                        styleRules.push('border-right: 1px solid #000');
                     }
-                } else {
+                    styleRules.push('width: 0');
+                    styleRules.push('background-color: transparent');
+                }
+                else {
                     // Regular field styles
                     styleRules.push(`font-size: ${style.fontSize || '10px'}`);
                     styleRules.push(`text-align: ${style.textAlign || 'left'}`);
@@ -1304,52 +1416,73 @@
                 field.removeAttribute('style');
             });
 
+            // Convert image placeholders
+            formWrapper.querySelectorAll('.image-placeholder').forEach(img => {
+                const src = img.dataset.src || '';
+                const alt = img.dataset.alt || '';
+
+                const imgElement = document.createElement('img');
+                imgElement.className = 'exported-image';
+                imgElement.src = src;
+                imgElement.alt = alt;
+
+                // Transfer positional classes
+                Array.from(img.classList).forEach(cls => {
+                    if (cls.startsWith('field-image-')) {
+                        imgElement.classList.add(cls);
+                    }
+                });
+
+                // Replace placeholder with actual image
+                img.replaceWith(imgElement);
+            });
+
             const htmlContent = `<!DOCTYPE html>
-                                <html lang="en">
-                                    <head>
-                                        <meta charset="UTF-8">
-                                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                                        <title>Generated Template</title>
-                                        <style>
-                                            body {
-                                                margin: 0;
-                                                padding: 0;
-                                                font-family: Arial, sans-serif;
-                                            }
+                        <html lang="en">
+                            <head>
+                                <meta charset="UTF-8">
+                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                                <title>Generated Template</title>
+                                <style>
+                                    body {
+                                        margin: 0;
+                                        padding: 0;
+                                        font-family: Arial, sans-serif;
+                                    }
 
-                                            .form-wrapper {
-                                                position: relative;
-                                                width: ${canvasWidth}in;
-                                                height: ${canvasHeight}in;
-                                                border: 1px solid #000;
-                                                margin: 0 auto;
-                                                background: white;
-                                            }
+                                    .form-wrapper {
+                                        position: relative;
+                                        width: ${canvasWidth}in;
+                                        height: ${canvasHeight}in;
+                                        border: 1px solid #000;
+                                        margin: 0 auto;
+                                        background: white;
+                                    }
 
-                                            ${cssLines.join('\n')}
+                                    ${cssLines.join('\n')}
 
-                                            @media print {
-                                                @page {
-                                                    size: ${canvasWidth}in ${canvasHeight}in;
-                                                    margin: 0;
-                                                }
+                                    @media print {
+                                        @page {
+                                            size: ${canvasWidth}in ${canvasHeight}in;
+                                            margin: 0;
+                                        }
 
-                                                body {
-                                                    margin: 0;
-                                                    padding: 0;
-                                                }
+                                        body {
+                                            margin: 0;
+                                            padding: 0;
+                                        }
 
-                                                .form-wrapper {
-                                                    border: none;
-                                                    margin: 0;
-                                                }
-                                            }
-                                        </style>
-                                    </head>
-                                    <body>
-                                        ${formWrapper.outerHTML}
-                                    </body>
-                                </html>`;
+                                        .form-wrapper {
+                                            border: none;
+                                            margin: 0;
+                                        }
+                                    }
+                                </style>
+                            </head>
+                            <body>
+                                ${formWrapper.outerHTML}
+                            </body>
+                        </html>`;
 
             const blob = new Blob([htmlContent], { type: 'text/html' });
             const url = URL.createObjectURL(blob);
@@ -1374,7 +1507,7 @@
 
             // Remove editor-specific elements
             formWrapper.querySelectorAll('.rulers, .guideline').forEach(el => el.remove());
-            formWrapper.querySelectorAll('.resize-handle, .line-endpoint, .rotate-handle').forEach(el => {
+            formWrapper.querySelectorAll('.resize-handle, .line-endpoint').forEach(el => {
                 el.style.display = 'none';
             });
 
@@ -1385,17 +1518,30 @@
                 field.classList.remove('selected', 'dragging');
                 field.contentEditable = false;
 
-                // Special handling for lines
-                if (field.classList.contains('line')) {
+                // Special handling for horizontal lines
+                if (field.classList.contains('hline')) {
                     if (!field.style.borderTop && !field.style.borderTopWidth) {
-                        // Default line style if none specified
                         field.style.borderTop = '1px solid #000';
                         field.style.height = '0';
                         field.style.backgroundColor = 'transparent';
                     }
-                } else {
-                    // Regular fields
-                    field.style.border = field.style.borderStyle === 'none' ? 'none' : field.style.border;
+                }
+                // Special handling for vertical lines
+                else if (field.classList.contains('vline')) {
+                    if (!field.style.borderRight && !field.style.borderRightWidth) {
+                        field.style.borderRight = '1px solid #000';
+                        field.style.width = '0';
+                        field.style.backgroundColor = 'transparent';
+                    }
+                }
+                // Special handling for image placeholders
+                else if (field.classList.contains('image-placeholder')) {
+                    const src = field.dataset.src || '';
+                    const alt = field.dataset.alt || '';
+                    const width = field.style.width || '100px';
+                    const height = field.style.height || '100px';
+
+                    field.outerHTML = `<img src="${src}" alt="${alt}" style="position:absolute;width:${width};height:${height};${field.style.cssText}">`;
                 }
             });
 
@@ -1403,59 +1549,59 @@
             const canvasHeight = document.getElementById('canvasHeight').value;
 
             const htmlContent = `<!DOCTYPE html>
-                        <html lang="en">
-                            <head>
-                                <meta charset="UTF-8">
-                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                                <title>PDF Export</title>
-                                <style>
+                    <html lang="en">
+                        <head>
+                            <meta charset="UTF-8">
+                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                            <title>PDF Export</title>
+                            <style>
+                                body {
+                                    margin: 0;
+                                    padding: 0;
+                                    font-family: Arial, sans-serif;
+                                }
+
+                                .form-wrapper {
+                                    position: relative;
+                                    width: ${canvasWidth}in;
+                                    height: ${canvasHeight}in;
+                                    margin: 0;
+                                    background: white;
+                                }
+
+                                .field {
+                                    position: absolute;
+                                    font-weight: normal;
+                                    padding: 0px;
+                                    font-size: 10px;
+                                }
+
+                                .hide-labels .label {
+                                    display: none !important;
+                                }
+
+                                @media print {
+                                    @page {
+                                        size: ${canvasWidth}in ${canvasHeight}in;
+                                        margin: 0;
+                                    }
+
                                     body {
                                         margin: 0;
                                         padding: 0;
-                                        font-family: Arial, sans-serif;
                                     }
 
                                     .form-wrapper {
-                                        position: relative;
-                                        width: ${canvasWidth}in;
-                                        height: ${canvasHeight}in;
+                                        border: none;
                                         margin: 0;
-                                        background: white;
                                     }
-
-                                    .field {
-                                        position: absolute;
-                                        font-weight: normal;
-                                        padding: 0px;
-                                        font-size: 10px;
-                                    }
-
-                                    .hide-labels .label {
-                                        display: none !important;
-                                    }
-
-                                    @media print {
-                                        @page {
-                                            size: ${canvasWidth}in ${canvasHeight}in;
-                                            margin: 0;
-                                        }
-
-                                        body {
-                                            margin: 0;
-                                            padding: 0;
-                                        }
-
-                                        .form-wrapper {
-                                            border: none;
-                                            margin: 0;
-                                        }
-                                    }
-                                </style>
-                            </head>
-                            <body>
-                                ${formWrapper.outerHTML}
-                            </body>
-                        </html>`;
+                                }
+                            </style>
+                        </head>
+                        <body>
+                            ${formWrapper.outerHTML}
+                        </body>
+                    </html>`;
 
             const printWindow = window.open('', '_blank');
             printWindow.document.write(htmlContent);
@@ -1517,10 +1663,41 @@
                 }
 
                 // Process all fields - apply ONLY stylesheet styles
-                importedWrapper.querySelectorAll('.field').forEach(field => {
+                importedWrapper.querySelectorAll('.field, img').forEach(field => {
+                    // Convert img tags back to image placeholders
+                    if (field.tagName.toLowerCase() === 'img') {
+                        const placeholder = document.createElement('div');
+                        placeholder.className = 'field label draggable image-placeholder';
+
+                        // Preserve the original class if it exists
+                        const imgClass = Array.from(field.classList).find(c => c.startsWith('field-image-'));
+                        if (imgClass) {
+                            placeholder.classList.add(imgClass);
+                        } else {
+                            placeholder.classList.add(`field-image-${Date.now()}`);
+                        }
+
+                        // Transfer attributes
+                        placeholder.dataset.src = field.src || '';
+                        placeholder.dataset.alt = field.alt || '';
+
+                        // Create placeholder content
+                        placeholder.innerHTML = '<span>Image Placeholder</span>';
+
+                        // Apply styles from stylesheet
+                        const matchingRule = this.findMatchingStyleRule(field, styleRules);
+                        if (matchingRule) {
+                            this.applyStylesFromRule(placeholder, matchingRule);
+                        }
+
+                        // Replace img with placeholder
+                        field.replaceWith(placeholder);
+                        field = placeholder;
+                    }
+
                     // Find all field-related classes
                     const fieldClasses = Array.from(field.classList).filter(c => c.startsWith('field-'));
-                    if (fieldClasses.length === 0) return;
+                    if (fieldClasses.length === 0 && !field.classList.contains('image-placeholder')) return;
 
                     // Clear all inline styles except contentEditable
                     const wasEditable = field.contentEditable === 'true';
@@ -1542,22 +1719,36 @@
                         }
                     });
 
-                    // Special handling for lines
-                    if (field.classList.contains('line')) {
+                    // Special handling for horizontal lines
+                    if (field.classList.contains('hline')) {
                         if (!field.style.borderTop && !field.style.borderTopWidth) {
-                            // Default line styling if no border properties exist
                             field.style.borderTop = '1px solid #000';
                             field.style.height = '0';
                             field.style.backgroundColor = 'transparent';
                         }
                     }
-
+                    // Special handling for vertical lines
+                    else if (field.classList.contains('vline')) {
+                        if (!field.style.borderRight && !field.style.borderRightWidth) {
+                            field.style.borderRight = '1px solid #000';
+                            field.style.width = '0';
+                            field.style.backgroundColor = 'transparent';
+                        }
+                    }
+                    // Special handling for image placeholders
+                    else if (field.classList.contains('image-placeholder')) {
+                        field.style.backgroundColor = '#f0f0f0';
+                        field.style.border = '1px dashed #999';
+                        field.style.display = 'flex';
+                        field.style.alignItems = 'center';
+                        field.style.justifyContent = 'center';
+                        field.innerHTML = '<span style="color:#666;font-size:12px;">Image Placeholder</span>';
+                    }
                     // Special handling for rectangle shapes
-                    if (field.classList.contains('rectangle') &&
+                    else if (field.classList.contains('rectangle') &&
                         !field.style.border &&
                         !field.style.borderWidth &&
                         !field.style.borderColor) {
-                        // Apply default rectangle styling if no border properties exist
                         field.style.border = '1px solid #000';
                         field.style.backgroundColor = 'transparent';
                     }
@@ -1573,8 +1764,7 @@
                     if (field.classList.contains('rectangle')) {
                         this.addResizeHandles(field);
                     }
-
-                    if (field.classList.contains('line')) {
+                    else if (field.classList.contains('hline') || field.classList.contains('vline')) {
                         const startPoint = document.createElement('div');
                         startPoint.className = 'line-endpoint start-point';
                         startPoint.style.display = 'none';
@@ -1583,13 +1773,8 @@
                         endPoint.className = 'line-endpoint end-point';
                         endPoint.style.display = 'none';
 
-                        const rotateHandle = document.createElement('div');
-                        rotateHandle.className = 'rotate-handle';
-                        rotateHandle.style.display = 'none';
-
                         field.appendChild(startPoint);
                         field.appendChild(endPoint);
-                        field.appendChild(rotateHandle);
                     }
                 });
 
@@ -1610,6 +1795,28 @@
             };
 
             reader.readAsText(file);
+        }
+
+        findMatchingStyleRule(element, styleRules) {
+            const classList = Array.from(element.classList);
+            for (const cls of classList) {
+                if (styleRules[cls]) {
+                    return styleRules[cls];
+                }
+            }
+            return null;
+        }
+
+        // Helper method to apply styles from rule
+        applyStylesFromRule(element, rule) {
+            const declarations = rule.split(';');
+            declarations.forEach(declaration => {
+                const [prop, value] = declaration.split(':').map(p => p.trim());
+                if (prop && value) {
+                    const jsProp = prop.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
+                    element.style[jsProp] = value;
+                }
+            });
         }
     }
 
