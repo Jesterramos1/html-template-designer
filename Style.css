@@ -57,20 +57,75 @@ body {
 
 .toolbar-section {
     margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #e0e0e0;
 }
 
     .toolbar-section:last-child {
         margin-bottom: 0;
+        border-bottom: none;
     }
 
     .toolbar-section h3 {
-        margin: 0 0 10px 0;
-        font-size: 14px;
-        font-weight: 600;
-        color: #2c3e50;
+        margin: 0 0 8px 0;
+        font-size: 13px;
+        color: #555;
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
+
+.btn-group .btn {
+    flex: 1;
+    min-width: 80px;
+    padding: 6px 8px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+}
+
+/* Icon styles - you can replace with actual icons */
+.icon-text::after {
+    content: "T";
+}
+
+.icon-label::after {
+    content: "L";
+}
+
+.icon-rectangle::after {
+    content: "□";
+}
+
+.icon-hline::after {
+    content: "─";
+}
+
+.icon-vline::after {
+    content: "│";
+}
+
+.icon-image::after {
+    content: "🖼";
+}
+
+.icon-drag::after {
+    content: "⇆";
+}
+
+.icon-label-visibility::after {
+    content: "👁";
+}
+
+.icon-grid::after {
+    content: "⌗";
+}
+
+.btn i {
+    font-style: normal;
+    font-size: 14px;
+}
 
 .form-wrapper {
     position: relative;
@@ -354,15 +409,27 @@ body {
     z-index: 10;
 }
 
-    .line-endpoint.start-point {
-        left: -5px;
-        top: -6px;
-    }
+/* Horizontal line endpoints */
+.hline .line-endpoint.start-point {
+    left: -5px;
+    top: -5px;
+}
 
-    .line-endpoint.end-point {
-        right: -5px;
-        bottom: -6px;
-    }
+.hline .line-endpoint.end-point {
+    right: -5px;
+    top: -5px;
+}
+
+/* Vertical line endpoints */
+.vline .line-endpoint.start-point {
+    left: -5px;
+    top: -5px;
+}
+
+.vline .line-endpoint.end-point {
+    left: -5px;
+    bottom: -5px;
+}
 
 .resize-handle {
     position: absolute;
@@ -419,3 +486,47 @@ body {
 .underline {
     text-decoration: underline;
 }
+
+/* Add these styles to the existing CSS */
+.hline {
+    min-width: 30px;
+    min-height: 0;
+    border-top: 1px solid #000;
+    background-color: transparent !important;
+    cursor: move;
+    z-index: 2 !important;
+}
+
+.vline {
+    min-width: 0;
+    min-height: 30px;
+    border-right: 1px solid #000;
+    background-color: transparent !important;
+    cursor: move;
+    z-index: 2 !important;
+}
+
+.image-placeholder {
+    background-color: #f0f0f0 !important;
+    border: 1px dashed #999 !important;
+    display: block;
+    overflow: hidden;
+    text-align: center;
+    position: relative;
+}
+
+    .image-placeholder span {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: #666;
+        font-size: 12px;
+        white-space: nowrap;
+    }
+
+    .image-placeholder img {
+        width: 100%;
+        height: 100%;
+        display: block;
+    }
