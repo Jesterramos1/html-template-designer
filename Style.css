@@ -151,7 +151,7 @@ body {
     background: rgba(255,255,255,0.9);
     cursor: move;
     user-select: none;
-    min-width: 60px;
+    min-width: 10px;
     min-height: 10px;
     transition: all 0.2s ease;
     box-sizing: border-box;
