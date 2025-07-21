@@ -31,7 +31,6 @@
             document.getElementById('addLabelBtn').addEventListener('click', () => this.addLabel());
             document.getElementById('toggleLabelsBtn').addEventListener('click', () => this.toggleLabels());
             document.getElementById('addRectangleBtn').addEventListener('click', () => this.addRectangle());
-            //document.getElementById('addLineBtn').addEventListener('click', () => this.addLine());
             document.getElementById('addHLineBtn').addEventListener('click', () => this.addHorizontalLine());
             document.getElementById('addVLineBtn').addEventListener('click', () => this.addVerticalLine());
             document.getElementById('addImageBtn').addEventListener('click', () => this.addImagePlaceholder());
@@ -147,66 +146,6 @@
             this.saveState();
         }
 
-        addLine() {
-            const nextNum = this.getNextFieldNumber('line');
-            this.fieldCounter = Math.max(this.fieldCounter, nextNum);
-
-            const line = document.createElement('div');
-            line.className = 'field label draggable line';
-            line.classList.add(`field-line-${this.fieldCounter}`);
-            line.style.top = '50px';
-            line.style.left = '50px';
-            line.style.width = '100px';
-            line.style.height = '0px'; // Height is now 0 since we're using border
-            line.style.borderTop = '1px solid #000'; // Use border-top instead of background
-            line.style.backgroundColor = 'transparent'; // Ensure no background
-            line.style.transformOrigin = '0 0';
-
-            // Create endpoints
-            const startPoint = document.createElement('div');
-            startPoint.className = 'line-endpoint start-point';
-            startPoint.style.position = 'absolute';
-            startPoint.style.width = '10px';
-            startPoint.style.height = '10px';
-            startPoint.style.borderRadius = '50%';
-            startPoint.style.backgroundColor = '#007bff';
-            startPoint.style.left = '-5px';
-            startPoint.style.top = '-5px';
-            startPoint.style.cursor = 'move';
-            startPoint.style.zIndex = '10';
-
-            const endPoint = document.createElement('div');
-            endPoint.className = 'line-endpoint end-point';
-            endPoint.style.position = 'absolute';
-            endPoint.style.width = '10px';
-            endPoint.style.height = '10px';
-            endPoint.style.borderRadius = '50%';
-            endPoint.style.backgroundColor = '#007bff';
-            endPoint.style.right = '-5px';
-            endPoint.style.bottom = '-5px';
-            endPoint.style.cursor = 'move';
-            endPoint.style.zIndex = '10';
-
-            // Create rotate handle
-            const rotateHandle = document.createElement('div');
-            rotateHandle.className = 'rotate-handle';
-            rotateHandle.title = 'Rotate 90°';
-
-            line.appendChild(startPoint);
-            line.appendChild(endPoint);
-            line.appendChild(rotateHandle);
-
-            startPoint.style.display = 'none';
-            endPoint.style.display = 'none';
-            rotateHandle.style.display = 'none';
-
-            document.getElementById('formWrapper').appendChild(line);
-            this.setupLineEvents(line);
-            this.updateFieldList();
-            this.selectField(line);
-            this.saveState();
-        }
-
         addHorizontalLine() {
             const nextNum = this.getNextFieldNumber('hline');
             this.fieldCounter = Math.max(this.fieldCounter, nextNum);
@@ -290,8 +229,8 @@
             img.classList.add(`field-image-${this.fieldCounter}`);
             img.style.top = '50px';
             img.style.left = '50px';
-            img.style.width = '100px';
-            img.style.height = '100px';
+            img.style.width = '140px';
+            img.style.height = '60px';
             img.innerHTML = '<span>Image Placeholder</span>';
 
             document.getElementById('formWrapper').appendChild(img);
@@ -1460,23 +1399,6 @@
                                     }
 
                                     ${cssLines.join('\n')}
-
-                                    @media print {
-                                        @page {
-                                            size: ${canvasWidth}in ${canvasHeight}in;
-                                            margin: 0;
-                                        }
-
-                                        body {
-                                            margin: 0;
-                                            padding: 0;
-                                        }
-
-                                        .form-wrapper {
-                                            border: none;
-                                            margin: 0;
-                                        }
-                                    }
                                 </style>
                             </head>
                             <body>

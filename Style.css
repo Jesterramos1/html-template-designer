@@ -389,46 +389,30 @@ body {
     z-index: 0 !important;
 }
 
-.line {
-    min-width: 30px;
-    min-height: 0;
-    border-top: 2px solid #000;
-    background-color: transparent !important;
-    transform-origin: 0 0;
-    cursor: move;
-    z-index: 2 !important;
-}
-
-.line-endpoint {
-    position: absolute;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background-color: #007bff;
-    cursor: move;
-    z-index: 10;
-}
-
 /* Horizontal line endpoints */
 .hline .line-endpoint.start-point {
     left: -5px;
     top: -5px;
+    z-index: 20 !important;
 }
 
 .hline .line-endpoint.end-point {
     right: -5px;
     top: -5px;
+    z-index: 20 !important;
 }
 
 /* Vertical line endpoints */
 .vline .line-endpoint.start-point {
     left: -5px;
     top: -5px;
+    z-index: 20 !important;
 }
 
 .vline .line-endpoint.end-point {
     left: -5px;
     bottom: -5px;
+    z-index: 20 !important;
 }
 
 .resize-handle {
@@ -439,6 +423,7 @@ body {
     border: 1px solid white;
     border-radius: 50%;
     cursor: nwse-resize;
+    z-index: 20 !important;
 }
 
     .resize-handle.top-left {
@@ -465,48 +450,32 @@ body {
         cursor: nwse-resize;
     }
 
-.rotate-handle {
-    position: absolute;
-    width: 16px;
-    height: 16px;
-    background: #28a745;
-    border: 2px solid white;
-    border-radius: 50%;
-    top: -20px;
-    left: 50%;
-    margin-left: -8px;
-    cursor: pointer;
-    display: none;
-}
-
-.line.selected .rotate-handle {
-    display: block;
-}
-
 .underline {
     text-decoration: underline;
 }
 
 /* Add these styles to the existing CSS */
 .hline {
-    min-width: 30px;
+    min-width: 10px;
     min-height: 0;
     border-top: 1px solid #000;
     background-color: transparent !important;
     cursor: move;
-    z-index: 2 !important;
+    z-index: 5 !important;
 }
 
 .vline {
     min-width: 0;
-    min-height: 30px;
+    min-height: 10px;
     border-right: 1px solid #000;
     background-color: transparent !important;
     cursor: move;
-    z-index: 2 !important;
+    z-index: 5 !important;
 }
 
 .image-placeholder {
+    min-width: 10px !important;
+    min-height: 10px !important;
     background-color: #f0f0f0 !important;
     border: 1px dashed #999 !important;
     display: block;
