@@ -143,7 +143,7 @@ body {
 
 .field {
     position: absolute;
-    font-size: 10px;
+    font-size: 8pt;
     font-weight: normal;
     color: #000;
     border: 1px dashed #007bff;
@@ -236,7 +236,7 @@ body {
         margin-bottom: 5px;
         font-weight: 500;
         color: #333;
-        font-size: 13px;
+        font-size: 8pt;
     }
 
 .form-control {
@@ -334,21 +334,23 @@ body {
     }
 
 .zoom-controls {
-    position: absolute;
-    bottom: 20px;
-    right: 20px;
+    position: fixed; /* <-- change absolute to fixed */
+    bottom: 60px;
+    right: 60px;
     background: white;
     border-radius: 4px;
-    padding: 10px;
+    padding: 4px 6px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.15);
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 4px;
+    line-height: 1;
+    z-index: 1000; /* keep it above other elements */
 }
 
     .zoom-controls .btn {
         margin: 0;
-        padding: 4px 8px;
+        padding: 2px 6px;
         font-size: 12px;
     }
 
@@ -383,7 +385,7 @@ body {
 
 .shape {
     min-width: .5px;
-    min-height: 30px;
+    min-height: 5px;
     cursor: move;
     background-color: transparent !important;
     z-index: 0 !important;
@@ -490,7 +492,7 @@ body {
         left: 50%;
         transform: translate(-50%, -50%);
         color: #666;
-        font-size: 12px;
+        font-size: 8pt;
         white-space: nowrap;
     }
 
