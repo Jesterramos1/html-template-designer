@@ -1336,7 +1336,6 @@
                     // Regular field styles
                     styleRules.push(`font-size: ${style.fontSize || '8pt'}`);
                     styleRules.push(`text-align: ${style.textAlign || 'left'}`);
-                    if (style.fontSize) styleRules.push(`font-size: ${style.fontSize}`);
                     if (style.fontWeight) styleRules.push(`font-weight: ${style.fontWeight}`);
                     if (style.textDecoration) styleRules.push(`text-decoration: ${style.textDecoration}`);
                     if (style.color) styleRules.push(`color: ${style.color}`);
