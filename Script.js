@@ -645,8 +645,9 @@
                         </div>
                     </div>
                     <div class="form-group">
-                        <label>Font Size (px)</label>
-                        <input type="number" class="form-control" id="propFontSize" value="${parseInt(style.fontSize)}" min="6" max="72">
+                        <label>Font Size (pt)</label>
+                        <input type="number" class="form-control" id="propFontSize"
+                                value="${pxToPt(parseFloat(style.fontSize))}" min="6" max="72">
                     </div>
                     <div class="form-group">
                         <label>Font Weight</label>
@@ -779,7 +780,7 @@
             const propFontSize = document.getElementById('propFontSize');
             if (propFontSize) {
                 propFontSize.addEventListener('input', (e) => {
-                    field.style.fontSize = e.target.value + 'px';
+                    field.style.fontSize = e.target.value + 'pt';
                     this.saveState();
                 });
             }
@@ -1333,9 +1334,8 @@
                 }
                 else {
                     // Regular field styles
-                    styleRules.push(`font-size: ${style.fontSize || '10px'}`);
+                    styleRules.push(`font-size: ${style.fontSize || '8pt'}`);
                     styleRules.push(`text-align: ${style.textAlign || 'left'}`);
-                    if (style.fontSize) styleRules.push(`font-size: ${style.fontSize}`);
                     if (style.fontWeight) styleRules.push(`font-weight: ${style.fontWeight}`);
                     if (style.textDecoration) styleRules.push(`text-decoration: ${style.textDecoration}`);
                     if (style.color) styleRules.push(`color: ${style.color}`);
@@ -1495,7 +1495,7 @@
                                     position: absolute;
                                     font-weight: normal;
                                     padding: 0px;
-                                    font-size: 10px;
+                                    font-size: 8pt;
                                 }
 
                                 .hide-labels .label {
@@ -1664,7 +1664,7 @@
                         field.style.display = 'flex';
                         field.style.alignItems = 'center';
                         field.style.justifyContent = 'center';
-                        field.innerHTML = '<span style="color:#666;font-size:12px;">Image Placeholder</span>';
+                        field.innerHTML = '<span style="color:#666;font-size:8pt;">Image Placeholder</span>';
                     }
                     // Special handling for rectangle shapes
                     else if (field.classList.contains('rectangle') &&
@@ -1740,6 +1740,9 @@
                 }
             });
         }
+    }
+    function pxToPt(px) {
+        return Math.round(px * 72 / 96);
     }
 
     // Initialize the designer
