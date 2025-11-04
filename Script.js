@@ -1,1750 +1,1614 @@
-﻿document.addEventListener('DOMContentLoaded', function () {
-    class TemplateDesigner {
-        constructor() {
-            this.dragEnabled = false;
-            this.snapToGrid = true;
-            this.gridSize = 10;
-            this.selectedField = null;
-            this.fieldCounter = 0;
-            this.zoomLevel = 1;
-            this.history = [];
-            this.historyIndex = -1;
-            this.hasUnsavedChanges = false; 
+class FormDesigner {
+    constructor() {
+        this.elements = [];
+        this.selectedElement = null;
+        this.nextId = 1;
+        this.zoom = 1;
+        this.showGrid = false;
+        this.snapToGrid = false;
+        this.gridSize = 10;
+        this.isDragging = false;
+        this.isResizing = false;
+        this.dragOffset = { x: 0, y: 0 };
+        this.currentResizeHandle = null;
+        this.isResizingColumn = false;
+        this.resizingColumnIndex = null;
 
-            this.init();
+        this.initializeElements();
+        this.setupEventListeners();
+        this.loadFromLocalStorage();
+    }
+
+    initializeElements() {
+        this.canvas = document.getElementById('designCanvas');
+        this.propertiesContent = document.getElementById('propertiesContent');
+        this.setupGrid();
+        this.updateGridVisibility();
+    }
+
+    updateGridVisibility() {
+        const grid = document.querySelector('.canvas-grid');
+        const gridBtn = document.getElementById('toggleGrid');
+        const snapBtn = document.getElementById('snapToGrid');
+
+        // Update grid visibility
+        if (this.showGrid) {
+            grid.classList.remove('hidden');
+            gridBtn.classList.add('active');
+        } else {
+            grid.classList.add('hidden');
+            gridBtn.classList.remove('active');
         }
 
-        init() {
-            this.bindEvents();
-            this.setupDragAndDrop();
-            this.updateFieldList();
-            this.updateCanvasSize();
-            this.saveState();
-            this.setupBeforeUnloadWarning();
+        // Update snap to grid button state
+        snapBtn.classList.toggle('active', this.snapToGrid);
+    }
+
+    setupGrid() {
+        const grid = document.querySelector('.canvas-grid');
+        grid.style.backgroundSize = `${this.gridSize}px ${this.gridSize}px`;
+    }
+
+    setupEventListeners() {
+        // Toolbox drag and drop
+        document.querySelectorAll('.toolbox-item').forEach(item => {
+            item.addEventListener('dragstart', this.handleToolboxDragStart.bind(this));
+        });
+
+        this.canvas.addEventListener('dragover', this.handleCanvasDragOver.bind(this));
+        this.canvas.addEventListener('drop', this.handleCanvasDrop.bind(this));
+        this.canvas.addEventListener('click', this.handleCanvasClick.bind(this));
+
+        // Header controls
+        document.getElementById('saveBtn').addEventListener('click', this.saveTemplate.bind(this));
+        document.getElementById('exportHtmlBtn').addEventListener('click', this.exportAsHTML.bind(this));
+        document.getElementById('printBtn').addEventListener('click', this.printForm.bind(this));
+        document.getElementById('importBtn').addEventListener('click', () => {
+            document.getElementById('importFile').click();
+        });
+        document.getElementById('importFile').addEventListener('change', this.importTemplate.bind(this));
+        document.getElementById('clearBtn').addEventListener('click', this.clearCanvas.bind(this));
+
+        // Paper size
+        document.getElementById('paperSize').addEventListener('change', this.handlePaperSizeChange.bind(this));
+        document.getElementById('applyCustomSize').addEventListener('click', this.applyCustomSize.bind(this));
+
+        // Canvas controls
+        document.getElementById('zoomIn').addEventListener('click', () => this.adjustZoom(0.1));
+        document.getElementById('zoomOut').addEventListener('click', () => this.adjustZoom(-0.1));
+        document.getElementById('toggleGrid').addEventListener('click', this.toggleGrid.bind(this));
+        document.getElementById('snapToGrid').addEventListener('click', this.toggleSnapToGrid.bind(this));
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', this.handleKeyboard.bind(this));
+
+        // Context menu
+        document.addEventListener('click', () => this.hideContextMenu());
+    }
+
+    handleToolboxDragStart(e) {
+        const type = e.target.dataset.type;
+        e.dataTransfer.setData('text/plain', type);
+        e.dataTransfer.effectAllowed = 'copy';
+    }
+
+    handleCanvasDragOver(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+    }
+
+    handleCanvasDrop(e) {
+        e.preventDefault();
+        const type = e.dataTransfer.getData('text/plain');
+        const rect = this.canvas.getBoundingClientRect();
+
+        let x = (e.clientX - rect.left) / this.zoom;
+        let y = (e.clientY - rect.top) / this.zoom;
+
+        if (this.snapToGrid) {
+            x = Math.round(x / this.gridSize) * this.gridSize;
+            y = Math.round(y / this.gridSize) * this.gridSize;
         }
 
-        bindEvents() {
-            // Toolbar buttons
-            document.getElementById('toggleDragBtn').addEventListener('click', () => this.toggleDragMode());
-            document.getElementById('toggleGridBtn').addEventListener('click', () => this.toggleGrid());
-            document.getElementById('addFieldBtn').addEventListener('click', () => this.addField());
-            document.getElementById('addLabelBtn').addEventListener('click', () => this.addLabel());
-            document.getElementById('toggleLabelsBtn').addEventListener('click', () => this.toggleLabels());
-            document.getElementById('addRectangleBtn').addEventListener('click', () => this.addRectangle());
-            document.getElementById('addHLineBtn').addEventListener('click', () => this.addHorizontalLine());
-            document.getElementById('addVLineBtn').addEventListener('click', () => this.addVerticalLine());
-            document.getElementById('addImageBtn').addEventListener('click', () => this.addImagePlaceholder());
+        this.addElement(type, x, y);
+    }
 
-            // Canvas size controls
-            document.getElementById('sizePreset').addEventListener('change', (e) => this.setSizePreset(e.target.value));
-            document.getElementById('canvasWidth').addEventListener('input', () => this.updateCanvasSize());
-            document.getElementById('canvasHeight').addEventListener('input', () => this.updateCanvasSize());
+    addElement(type, x, y) {
+        const id = `element-${this.nextId++}`;
+        const element = {
+            id,
+            type,
+            x,
+            y,
+            width: this.getDefaultWidth(type),
+            height: this.getDefaultHeight(type),
+            properties: this.getDefaultProperties(type)
+        };
 
-            // Export buttons
-            document.getElementById('downloadHtmlBtn').addEventListener('click', () => this.downloadHtml());
-            document.getElementById('copyCssBtn').addEventListener('click', () => this.copyCss());
-            document.getElementById('downloadPdfBtn').addEventListener('click', () => this.downloadPdf());
+        this.elements.push(element);
+        this.renderElement(element);
+        this.selectElement(element);
+        this.saveToLocalStorage();
+    }
 
-            // Import template
-            document.getElementById('uploadTemplateInput').addEventListener('change', (e) => this.loadHtmlTemplate(e));
+    getDefaultWidth(type) {
+        const defaults = {
+            'text-field': 200,
+            'rectangle': 150,
+            'vline': 2,
+            'hline': 200,
+            'table': 300,
+            'label': 120,
+            'checkbox': 150,
+            'signature': 200
+        };
+        return defaults[type] || 100;
+    }
 
-            // Zoom controls
-            document.getElementById('zoomInBtn').addEventListener('click', () => this.zoom(1.2));
-            document.getElementById('zoomOutBtn').addEventListener('click', () => this.zoom(0.8));
-            document.getElementById('fitToPageBtn').addEventListener('click', () => this.fitToPage());
+    getDefaultHeight(type) {
+        const defaults = {
+            'text-field': 25,
+            'rectangle': 100,
+            'vline': 100,
+            'hline': 2,
+            'table': 120,
+            'label': 24,
+            'checkbox': 24,
+            'signature': 80
+        };
+        return defaults[type] || 30;
+    }
 
-            // Field selection
-            document.addEventListener('click', (e) => this.handleFieldSelection(e));
+    getDefaultProperties(type) {
+        const baseProps = {
+            label: '',
+            fontSize: 14,
+            color: '#000000',
+            backgroundColor: 'transparent',
+            borderColor: '#000000',
+            borderWidth: 1,
+            textAlign: 'left',
+            fontWeight: 'normal',
+            elementId: ''
+        };
 
-            // Keyboard shortcuts
-            document.addEventListener('keydown', (e) => this.handleKeyboard(e));
+        const typeProps = {
+            'text-field': {
+                ...baseProps,
+                text: 'Text Field',
+                placeholder: '',
+                fontSize: 9
+            },
+            'rectangle': {
+                ...baseProps,
+                label: '',
+                fillColor: 'transparent',
+                borderWidth: 2
+            },
+            'vline': {
+                ...baseProps,
+                label: '',
+                color: '#000000',
+                thickness: 2
+            },
+            'hline': {
+                ...baseProps,
+                label: '',
+                color: '#000000',
+                thickness: 2
+            },
+            'table': {
+                ...baseProps,
+                label: 'Table',
+                rows: 2,
+                columns: 3,
+                headers: ['Header 1', 'Header 2', 'Header 3'],
+                columnWidths: [33.33, 33.33, 33.34], // Percentages
+                fontSize: 12
+            },
+            'label': {
+                ...baseProps,
+                label: 'Text Label',
+                text: 'Label Text',
+                fontSize: 9
+            },
+            'checkbox': {
+                ...baseProps,
+                label: 'Checkbox',
+                text: 'Check me'
+            },
+            'signature': {
+                ...baseProps,
+                label: 'Signature',
+                text: 'Signature'
+            }
+        };
 
-            // Mouse tracking
-            document.getElementById('formWrapper').addEventListener('mousemove', (e) => this.updateMousePosition(e));
+        return typeProps[type] || baseProps;
+    }
+
+    renderElement(elementData) {
+        let elementDiv = document.getElementById(elementData.id);
+
+        if (!elementDiv) {
+            elementDiv = document.createElement('div');
+            elementDiv.id = elementData.id;
+            elementDiv.className = `design-element ${elementData.type}-element`;
+            this.canvas.appendChild(elementDiv);
+
+            // Add resize handles for resizable elements
+            if (this.isResizable(elementData.type)) {
+                this.addResizeHandles(elementDiv);
+            }
+
+            // Make draggable
+            this.makeDraggable(elementDiv);
+
+            // Initial content render
+            this.updateElementContent(elementDiv, elementData);
         }
 
-        setupBeforeUnloadWarning() {
-            window.addEventListener('beforeunload', (e) => {
-                if (this.hasUnsavedChanges) {
-                    e.preventDefault();
-                    e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
-                    return e.returnValue;
+        // Update position and size
+        elementDiv.style.left = `${elementData.x}px`;
+        elementDiv.style.top = `${elementData.y}px`;
+
+        // For table, width is set explicitly
+        if (elementData.type === 'table') {
+            elementDiv.style.width = `${elementData.width}px`;
+            elementDiv.style.height = 'auto'; // Auto height for tables
+        } else {
+            elementDiv.style.width = `${elementData.width}px`;
+            elementDiv.style.height = `${elementData.height}px`;
+        }
+
+        // Only update content if not dragging/resizing
+        if (!this.isDragging && !this.isResizing && !this.isResizingColumn) {
+            this.updateElementContent(elementDiv, elementData);
+        }
+
+        // Apply styles
+        this.applyElementStyles(elementDiv, elementData);
+    }
+
+    updateElementContent(elementDiv, elementData) {
+        const { type, properties } = elementData;
+
+        if (this.isDragging || this.isResizing || this.isResizingColumn) {
+            return;
+        }
+        // Save existing resize handles before updating content
+        const resizeHandles = Array.from(elementDiv.querySelectorAll('.resize-handle'));
+        const columnResizeHandles = Array.from(elementDiv.querySelectorAll('.column-resize-handle'));
+
+        switch (type) {
+            case 'text-field':
+                if (elementDiv.textContent !== (properties.text || 'Text Field')) {
+                    elementDiv.innerHTML = `${properties.text || 'Text Field'}`;
                 }
-            });
+                break;
+
+            case 'rectangle':
+                elementDiv.innerHTML = '';
+                break;
+
+            case 'vline':
+                elementDiv.innerHTML = '';
+                elementDiv.style.borderLeft = `${properties.thickness}px solid ${properties.color}`;
+                elementDiv.style.backgroundColor = 'transparent';
+                break;
+
+            case 'hline':
+                elementDiv.innerHTML = '';
+                elementDiv.style.borderTop = `${properties.thickness}px solid ${properties.color}`;
+                elementDiv.style.backgroundColor = 'transparent';
+                break;
+
+            case 'table':
+                this.renderTable(elementDiv, elementData);
+                break;
+
+            case 'label':
+                if (elementDiv.textContent !== (properties.text || 'Label')) {
+                    elementDiv.innerHTML = `${properties.text || 'Label'}`;
+                }
+                break;
+
+            case 'checkbox':
+                elementDiv.innerHTML = `
+                    <input type="checkbox" style="float: left; margin-right: 8px; margin-top: 2px; width: 16px; height: 16px;">
+                    <span class="checkbox-label" style="display: inline-block; font-size: 14pt; color: #2c3e50;">${properties.text || 'Checkbox'}</span>
+                    <div style="clear: both;"></div>
+                `;
+                break;
+
+            case 'signature':
+                const paddingTop = Math.max(10, Math.floor(elementData.height / 3));
+                elementDiv.innerHTML = `<div style="text-align: center; padding-top: ${paddingTop}px; font-style: italic;">${properties.text || 'Signature'}</div>`;
+                break;
         }
 
-        resetUnsavedChanges() {
-            this.hasUnsavedChanges = false;
+        // Restore resize handles after updating content
+        resizeHandles.forEach(handle => elementDiv.appendChild(handle));
+        columnResizeHandles.forEach(handle => elementDiv.appendChild(handle));
+    }
+
+    renderTable(elementDiv, elementData) {
+        const { properties } = elementData;
+        const rows = properties.rows || 3;
+        const cols = properties.columns || 3;
+        const columnWidths = properties.columnWidths || Array(cols).fill(100 / cols);
+        const fontSize = properties.fontSize || 12;
+
+        let tableHTML = '<div class="table-header table-row">';
+        for (let i = 0; i < cols; i++) {
+            const isLastCell = i === cols - 1;
+            tableHTML += `
+            <div class="table-cell" style="width: ${columnWidths[i]}%; font-size: ${fontSize}pt; float: left; box-sizing: border-box; border-right: ${isLastCell ? 'none' : '1px solid #34495e'};">
+                ${properties.headers?.[i] || `Header ${i + 1}`}
+                ${i < cols - 1 ? '<div class="column-resize-handle" data-column="' + i + '"></div>' : ''}
+            </div>`;
+        }
+        tableHTML += '<div style="clear: both;"></div></div>';
+
+        for (let i = 1; i < rows; i++) {
+            const isLastRow = i === rows - 1;
+            tableHTML += `<div class="table-row" style="border-bottom: ${isLastRow ? 'none' : '1px solid #34495e'}">`;
+            for (let j = 0; j < cols; j++) {
+                const isLastCell = j === cols - 1;
+                tableHTML += `<div class="table-cell" style="width: ${columnWidths[j]}%; font-size: ${fontSize}pt; float: left; box-sizing: border-box; border-right: ${isLastCell ? 'none' : '1px solid #34495e'};">&nbsp;</div>`;
+            }
+            tableHTML += '<div style="clear: both;"></div></div>';
         }
 
-        toggleDragMode() {
-            this.dragEnabled = !this.dragEnabled;
-            const btn = document.getElementById('toggleDragBtn');
-            btn.textContent = this.dragEnabled ? 'Disable Drag' : 'Enable Drag';
-            btn.className = this.dragEnabled ? 'btn btn-danger' : 'btn btn-secondary';
-            this.updateStatus(this.dragEnabled ? 'Drag mode enabled' : 'Drag mode disabled');
+        elementDiv.innerHTML = tableHTML;
+
+        // Add column resize listeners
+        elementDiv.querySelectorAll('.column-resize-handle').forEach(handle => {
+            handle.addEventListener('mousedown', (e) => this.startColumnResize(e, elementData));
+        });
+    }
+
+    applyElementStyles(elementDiv, elementData) {
+        const { type, properties } = elementData;
+
+        // Common text styles for both text-field and label
+        if (['text-field', 'label'].includes(type)) {
+            elementDiv.style.fontSize = `${properties.fontSize}pt`;
+            elementDiv.style.color = properties.color;
+            elementDiv.style.textAlign = properties.textAlign;
+            elementDiv.style.fontWeight = properties.fontWeight;
+            elementDiv.style.display = 'block';
+            elementDiv.style.lineHeight = 'normal';
         }
 
-        toggleGrid() {
-            const formWrapper = document.getElementById('formWrapper');
-            formWrapper.classList.toggle('grid-bg');
-            const btn = document.getElementById('toggleGridBtn');
-            btn.textContent = formWrapper.classList.contains('grid-bg') ? 'Hide Grid' : 'Show Grid';
+        switch (type) {
+            case 'rectangle':
+                elementDiv.style.backgroundColor = properties.fillColor;
+                elementDiv.style.border = `${properties.borderWidth}px solid ${properties.borderColor}`;
+                break;
+
+            case 'vline':
+                // Use border instead of background for better printing
+                elementDiv.style.borderLeft = `${properties.thickness}px solid ${properties.color}`;
+                elementDiv.style.backgroundColor = 'transparent';
+                elementDiv.style.width = `${properties.thickness}px`;
+                break;
+
+            case 'hline':
+                // Use border instead of background for better printing
+                elementDiv.style.borderTop = `${properties.thickness}px solid ${properties.color}`;
+                elementDiv.style.backgroundColor = 'transparent';
+                elementDiv.style.height = `${properties.thickness}px`;
+                break;
+
+            case 'signature':
+                elementDiv.style.border = `1px dashed ${properties.borderColor}`;
+                elementDiv.style.color = properties.color;
+                break;
         }
+    }
 
-        setSizePreset(preset) {
-            if (preset === 'custom') return;
+    isResizable(type) {
+        return ['rectangle', 'text-field', 'label', 'vline', 'hline', 'signature', 'table'].includes(type);
+    }
 
-            const [width, height] = preset.split('x').map(Number);
-            document.getElementById('canvasWidth').value = width;
-            document.getElementById('canvasHeight').value = height;
-            this.updateCanvasSize();
-        }
+    addResizeHandles(elementDiv) {
+        const element = this.getElementById(elementDiv.id);
 
-        toggleLabels() {
-            const wrapper = document.getElementById('formWrapper');
-            const btn = document.getElementById('toggleLabelsBtn');
-            const isHiding = wrapper.classList.toggle('hide-labels');
-
-            btn.textContent = isHiding ? 'Show Labels' : 'Hide Labels';
-            this.updateStatus(isHiding ? 'Labels hidden' : 'Labels visible');
-        }
-
-        updateCanvasSize() {
-            const width = parseFloat(document.getElementById('canvasWidth').value);
-            const height = parseFloat(document.getElementById('canvasHeight').value);
-            const formWrapper = document.getElementById('formWrapper');
-
-            formWrapper.style.width = `${width}in`;
-            formWrapper.style.height = `${height}in`;
-
-            this.updateStatus(`Canvas size: ${width}" � ${height}"`);
-        }
-
-        addRectangle() {
-            const nextNum = this.getNextFieldNumber('rectangle');
-            this.fieldCounter = Math.max(this.fieldCounter, nextNum);
-
-            const rect = document.createElement('div');
-            rect.className = 'field label draggable shape rectangle';
-            rect.classList.add(`field-rectangle-${this.fieldCounter}`);
-            rect.style.top = '50px';
-            rect.style.left = '50px';
-            rect.style.width = '100px';
-            rect.style.height = '60px';
-            rect.style.backgroundColor = 'transparent';
-            rect.style.border = '1px solid #000';
-            rect.style.borderRadius = '0px';
-
-            // Add resize handles
-            this.addResizeHandles(rect);
-
-            document.getElementById('formWrapper').appendChild(rect);
-            this.setupShapeEvents(rect);
-            this.updateFieldList();
-            this.selectField(rect);
-            this.saveState();
-        }
-
-        addHorizontalLine() {
-            const nextNum = this.getNextFieldNumber('hline');
-            this.fieldCounter = Math.max(this.fieldCounter, nextNum);
-
-            const line = document.createElement('div');
-            line.className = 'field label draggable hline';
-            line.classList.add(`field-hline-${this.fieldCounter}`);
-            line.style.top = '50px';
-            line.style.left = '50px';
-            line.style.width = '100px';
-            line.style.height = '0px';
-            line.style.borderTop = '1px solid #000';
-            line.style.backgroundColor = 'transparent';
-
-            // Create endpoints for horizontal line
-            const startPoint = document.createElement('div');
-            startPoint.className = 'line-endpoint start-point';
-            startPoint.style.left = '-5px';
-            startPoint.style.top = '-5px';
-            startPoint.style.display = 'none';
-
-            const endPoint = document.createElement('div');
-            endPoint.className = 'line-endpoint end-point';
-            endPoint.style.right = '-5px';
-            endPoint.style.top = '-5px';
-            endPoint.style.display = 'none';
-
-            line.appendChild(startPoint);
-            line.appendChild(endPoint);
-
-            document.getElementById('formWrapper').appendChild(line);
-            this.setupLineEvents(line, 'horizontal');
-            this.updateFieldList();
-            this.selectField(line);
-            this.saveState();
-        }
-
-        addVerticalLine() {
-            const nextNum = this.getNextFieldNumber('vline');
-            this.fieldCounter = Math.max(this.fieldCounter, nextNum);
-
-            const line = document.createElement('div');
-            line.className = 'field label draggable vline';
-            line.classList.add(`field-vline-${this.fieldCounter}`);
-            line.style.top = '50px';
-            line.style.left = '50px';
-            line.style.width = '0px';
-            line.style.height = '100px';
-            line.style.borderRight = '1px solid #000';
-            line.style.backgroundColor = 'transparent';
-
-            // Create endpoints for vertical line
-            const startPoint = document.createElement('div');
-            startPoint.className = 'line-endpoint start-point';
-            startPoint.style.left = '-5px';
-            startPoint.style.top = '-5px';
-            startPoint.style.display = 'none';
-
-            const endPoint = document.createElement('div');
-            endPoint.className = 'line-endpoint end-point';
-            endPoint.style.left = '-5px';
-            endPoint.style.bottom = '-5px';
-            endPoint.style.display = 'none';
-
-            line.appendChild(startPoint);
-            line.appendChild(endPoint);
-
-            document.getElementById('formWrapper').appendChild(line);
-            this.setupLineEvents(line, 'vertical');
-            this.updateFieldList();
-            this.selectField(line);
-            this.saveState();
-        }
-
-        addImagePlaceholder() {
-            const nextNum = this.getNextFieldNumber('image');
-            this.fieldCounter = Math.max(this.fieldCounter, nextNum);
-
-            const img = document.createElement('div');
-            img.className = 'field label draggable image-placeholder';
-            img.classList.add(`field-image-${this.fieldCounter}`);
-            img.style.top = '50px';
-            img.style.left = '50px';
-            img.style.width = '140px';
-            img.style.height = '60px';
-            img.innerHTML = '<span>Image Placeholder</span>';
-
-            document.getElementById('formWrapper').appendChild(img);
-            this.setupFieldEvents(img);
-            this.updateFieldList();
-            this.selectField(img);
-            this.saveState();
-        }
-
-        addResizeHandles(element) {
-            const positions = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
-
-            positions.forEach(pos => {
-                const handle = document.createElement('div');
-                handle.className = `resize-handle ${pos}`;
-                handle.style.display = 'none';
-                element.appendChild(handle);
-            });
-
-            this.setupResizeEvents(element);
-        }
-
-        setupResizeEvents(element) {
-            const handles = element.querySelectorAll('.resize-handle');
-
+        // For tables, only add horizontal (east and west) resize handles
+        if (element && element.type === 'table') {
+            const handles = ['e', 'w'];
             handles.forEach(handle => {
-                handle.addEventListener('mousedown', (e) => {
-                    e.stopPropagation();
-                    this.startResizing(element, e, handle.classList.contains('top-left'),
-                        handle.classList.contains('top-right'),
-                        handle.classList.contains('bottom-left'),
-                        handle.classList.contains('bottom-right'));
-                });
+                const handleDiv = document.createElement('div');
+                handleDiv.className = `resize-handle ${handle}`;
+                handleDiv.style.zIndex = '10000'; // Explicitly set z-index
+                handleDiv.style.pointerEvents = 'auto';
+                handleDiv.addEventListener('mousedown', (e) => this.startResize(e, handle));
+                elementDiv.appendChild(handleDiv);
+            });
+        } else {
+            // For other elements, add all resize handles
+            const handles = ['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se'];
+            handles.forEach(handle => {
+                const handleDiv = document.createElement('div');
+                handleDiv.className = `resize-handle ${handle}`;
+                handleDiv.style.zIndex = '10000'; // Explicitly set z-index
+                handleDiv.style.pointerEvents = 'auto';
+                handleDiv.addEventListener('mousedown', (e) => this.startResize(e, handle));
+                elementDiv.appendChild(handleDiv);
             });
         }
+    }
 
-        startResizing(element, e, isTopLeft, isTopRight, isBottomLeft, isBottomRight) {
+    makeDraggable(elementDiv) {
+        elementDiv.addEventListener('mousedown', (e) => {
+            if (e.target.classList.contains('resize-handle') ||
+                e.target.classList.contains('column-resize-handle')) return;
+
+            this.selectElement(this.getElementById(elementDiv.id));
+            this.startDrag(e, elementDiv);
+        });
+        elementDiv.addEventListener('contextmenu', (e) => {
             e.preventDefault();
+            this.selectElement(this.getElementById(elementDiv.id));
+            this.showContextMenu(e);
+        });
+    }
 
-            const startX = e.clientX;
-            const startY = e.clientY;
-            const startWidth = parseInt(element.style.width);
-            const startHeight = parseInt(element.style.height);
-            const startLeft = parseInt(element.style.left);
-            const startTop = parseInt(element.style.top);
+    startDrag(e, elementDiv) {
+        this.isDragging = true;
 
-            const onMouseMove = (moveEvent) => {
-                const dx = moveEvent.clientX - startX;
-                const dy = moveEvent.clientY - startY;
+        const element = this.getElementById(elementDiv.id);
+        const canvasRect = this.canvas.getBoundingClientRect();
 
-                if (isTopLeft) {
-                    element.style.width = (startWidth - dx) + 'px';
-                    element.style.height = (startHeight - dy) + 'px';
-                    element.style.left = (startLeft + dx) + 'px';
-                    element.style.top = (startTop + dy) + 'px';
-                } else if (isTopRight) {
-                    element.style.width = (startWidth + dx) + 'px';
-                    element.style.height = (startHeight - dy) + 'px';
-                    element.style.top = (startTop + dy) + 'px';
-                } else if (isBottomLeft) {
-                    element.style.width = (startWidth - dx) + 'px';
-                    element.style.height = (startHeight + dy) + 'px';
-                    element.style.left = (startLeft + dx) + 'px';
-                } else { // bottom-right
-                    element.style.width = (startWidth + dx) + 'px';
-                    element.style.height = (startHeight + dy) + 'px';
-                }
-            };
+        // Calculate the mouse position relative to the element's top-left corner
+        const elementX = (e.clientX - canvasRect.left) / this.zoom;
+        const elementY = (e.clientY - canvasRect.top) / this.zoom;
 
-            const onMouseUp = () => {
-                document.removeEventListener('mousemove', onMouseMove);
-                document.removeEventListener('mouseup', onMouseUp);
-                this.saveState();
-            };
+        this.dragOffset.x = elementX - element.x;
+        this.dragOffset.y = elementY - element.y;
 
-            document.addEventListener('mousemove', onMouseMove);
-            document.addEventListener('mouseup', onMouseUp);
-        }
+        const mouseMoveHandler = (e) => {
+            if (!this.isDragging) return;
 
-        setupShapeEvents(shape) {
-            this.setupFieldEvents(shape);
+            // Calculate new position based on current mouse position
+            const newX = (e.clientX - canvasRect.left) / this.zoom - this.dragOffset.x;
+            const newY = (e.clientY - canvasRect.top) / this.zoom - this.dragOffset.y;
 
-            shape.addEventListener('dblclick', () => {
-                if (!this.dragEnabled) {
-                    this.selectField(shape);
-                }
-            });
-        }
-
-        setupLineEvents(line, lineType) {
-            const startPoint = line.querySelector('.start-point');
-            const endPoint = line.querySelector('.end-point');
-
-            // Line movement (when dragging the line itself)
-            line.addEventListener('mousedown', (e) => {
-                if (!this.dragEnabled || e.target !== line) return;
-                e.preventDefault();
-
-                const startX = e.clientX;
-                const startY = e.clientY;
-                const startLeft = parseInt(line.style.left);
-                const startTop = parseInt(line.style.top);
-
-                const onMouseMove = (moveEvent) => {
-                    const dx = moveEvent.clientX - startX;
-                    const dy = moveEvent.clientY - startY;
-
-                    line.style.left = (startLeft + dx) + 'px';
-                    line.style.top = (startTop + dy) + 'px';
-                };
-
-                const onMouseUp = () => {
-                    document.removeEventListener('mousemove', onMouseMove);
-                    document.removeEventListener('mouseup', onMouseUp);
-                    this.saveState();
-                };
-
-                document.addEventListener('mousemove', onMouseMove);
-                document.addEventListener('mouseup', onMouseUp);
-            });
-
-            // Start point movement
-            startPoint.addEventListener('mousedown', (e) => {
-                e.stopPropagation();
-                e.preventDefault();
-
-                const startX = e.clientX;
-                const startY = e.clientY;
-                const startLeft = parseInt(line.style.left);
-                const startTop = parseInt(line.style.top);
-                const startWidth = parseInt(line.style.width);
-                const startHeight = parseInt(line.style.height);
-
-                const onMouseMove = (moveEvent) => {
-                    const dx = moveEvent.clientX - startX;
-                    const dy = moveEvent.clientY - startY;
-
-                    if (lineType === 'horizontal') {
-                        // For horizontal line, only left position and width change
-                        line.style.left = (startLeft + dx) + 'px';
-                        line.style.width = (startWidth - dx) + 'px';
-                    } else {
-                        // For vertical line, only top position and height change
-                        line.style.top = (startTop + dy) + 'px';
-                        line.style.height = (startHeight - dy) + 'px';
-                    }
-                };
-
-                const onMouseUp = () => {
-                    document.removeEventListener('mousemove', onMouseMove);
-                    document.removeEventListener('mouseup', onMouseUp);
-                    this.saveState();
-                };
-
-                document.addEventListener('mousemove', onMouseMove);
-                document.addEventListener('mouseup', onMouseUp);
-            });
-
-            // End point movement
-            endPoint.addEventListener('mousedown', (e) => {
-                e.stopPropagation();
-                e.preventDefault();
-
-                const startX = e.clientX;
-                const startY = e.clientY;
-                const startWidth = parseInt(line.style.width);
-                const startHeight = parseInt(line.style.height);
-
-                const onMouseMove = (moveEvent) => {
-                    const dx = moveEvent.clientX - startX;
-                    const dy = moveEvent.clientY - startY;
-
-                    if (lineType === 'horizontal') {
-                        // For horizontal line, only width changes
-                        line.style.width = (startWidth + dx) + 'px';
-                    } else {
-                        // For vertical line, only height changes
-                        line.style.height = (startHeight + dy) + 'px';
-                    }
-                };
-
-                const onMouseUp = () => {
-                    document.removeEventListener('mousemove', onMouseMove);
-                    document.removeEventListener('mouseup', onMouseUp);
-                    this.saveState();
-                };
-
-                document.addEventListener('mousemove', onMouseMove);
-                document.addEventListener('mouseup', onMouseUp);
-            });
-
-            line.addEventListener('dblclick', () => {
-                if (!this.dragEnabled) {
-                    this.selectField(line);
-                }
-            });
-        }
-
-        addField() {
-            const nextNum = this.getNextFieldNumber('custom');
-            this.fieldCounter = Math.max(this.fieldCounter, nextNum);
-
-            const field = document.createElement('div');
-            field.className = 'field draggable';
-            field.classList.add(`field-custom-${this.fieldCounter}`);
-            field.textContent = `Field ${this.fieldCounter}`;
-            field.style.top = '50px';
-            field.style.left = '50px';
-            field.contentEditable = true;
-
-            document.getElementById('formWrapper').appendChild(field);
-            this.setupFieldEvents(field);
-            this.updateFieldList();
-            this.selectField(field);
-            this.saveState();
-        }
-
-        addLabel() {
-            const nextNum = this.getNextFieldNumber('label');
-            this.fieldCounter = Math.max(this.fieldCounter, nextNum);
-
-            const label = document.createElement('div');
-            label.className = 'field draggable label';
-            label.classList.add(`field-label-${this.fieldCounter}`);
-            label.textContent = `Label ${this.fieldCounter}`;
-            label.style.top = '50px';
-            label.style.left = '50px';
-            label.contentEditable = true;
-            label.style.padding = '0px 1px';
-
-            document.getElementById('formWrapper').appendChild(label);
-            this.setupFieldEvents(label);
-            this.updateFieldList();
-            this.selectField(label);
-            this.saveState();
-        }
-
-        setupDragAndDrop() {
-            let offsetX, offsetY, dragged;
-
-            document.querySelectorAll('.draggable').forEach(el => {
-                this.setupFieldEvents(el);
-            });
-        }
-
-        setupFieldEvents(field) {
-            field.addEventListener('mousedown', (e) => {
-                if (!this.dragEnabled) return;
-                e.preventDefault();
-
-                this.dragged = field;
-                field.classList.add('dragging');
-
-                const rect = field.getBoundingClientRect();
-                const parentRect = document.getElementById('formWrapper').getBoundingClientRect();
-
-                this.offsetX = e.clientX - rect.left;
-                this.offsetY = e.clientY - rect.top;
-
-                document.addEventListener('mousemove', this.onMouseMove.bind(this));
-                document.addEventListener('mouseup', this.onMouseUp.bind(this));
-            });
-
-            field.addEventListener('dblclick', () => {
-                if (!this.dragEnabled) {
-                    field.contentEditable = true;
-                    field.focus();
-                    this.selectTextContent(field);
-                }
-            });
-
-            field.addEventListener('blur', () => {
-                field.contentEditable = false;
-                this.updateFieldList();
-                this.saveState();
-            });
-
-            field.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    field.blur();
-                }
-            });
-        }
-
-        onMouseMove(e) {
-            if (!this.dragged) return;
-
-            const parentRect = document.getElementById('formWrapper').getBoundingClientRect();
-            let x = e.clientX - parentRect.left - this.offsetX;
-            let y = e.clientY - parentRect.top - this.offsetY;
+            let x = newX;
+            let y = newY;
 
             if (this.snapToGrid) {
-                x = Math.round(x / this.gridSize) * this.gridSize;
-                y = Math.round(y / this.gridSize) * this.gridSize;
+                x = Math.round(newX / this.gridSize) * this.gridSize;
+                y = Math.round(newY / this.gridSize) * this.gridSize;
             }
 
-            // Boundaries
-            x = Math.max(0, Math.min(x, parentRect.width - this.dragged.offsetWidth));
-            y = Math.max(0, Math.min(y, parentRect.height - this.dragged.offsetHeight));
+            // Constrain to canvas
+            x = Math.max(0, Math.min(x, this.canvas.offsetWidth - elementDiv.offsetWidth));
+            y = Math.max(0, Math.min(y, this.canvas.offsetHeight - elementDiv.offsetHeight));
 
-            this.dragged.style.left = `${x}px`;
-            this.dragged.style.top = `${y}px`;
+            this.updateElementPosition(elementDiv.id, x, y);
+        };
 
-            this.updatePositionInfo(x, y);
-            this.showGuidelines(x, y);
-        }
+        const mouseUpHandler = () => {
+            this.isDragging = false;
+            document.removeEventListener('mousemove', mouseMoveHandler);
+            document.removeEventListener('mouseup', mouseUpHandler);
+            this.saveToLocalStorage();
+        };
 
-        onMouseUp() {
-            if (this.dragged) {
-                this.dragged.classList.remove('dragging');
-                this.hideGuidelines();
-                this.saveState();
+        document.addEventListener('mousemove', mouseMoveHandler);
+        document.addEventListener('mouseup', mouseUpHandler);
+    }
+
+    startResize(e, handle) {
+        e.stopPropagation();
+        this.isResizing = true;
+        this.currentResizeHandle = handle;
+
+        const element = this.getElementById(e.target.parentElement.id);
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startWidth = element.width;
+        const startHeight = element.height;
+        const startLeft = element.x;
+        const startTop = element.y;
+
+        const mouseMoveHandler = (e) => {
+            if (!this.isResizing) return;
+
+            const deltaX = (e.clientX - startX) / this.zoom;
+            const deltaY = (e.clientY - startY) / this.zoom;
+
+            let newWidth = startWidth;
+            let newHeight = startHeight;
+            let newLeft = startLeft;
+            let newTop = startTop;
+
+            switch (handle) {
+                case 'e':
+                    newWidth = Math.max(20, startWidth + deltaX);
+                    break;
+                case 'w':
+                    newWidth = Math.max(20, startWidth - deltaX);
+                    newLeft = startLeft + deltaX;
+                    break;
+                case 's':
+                    newHeight = Math.max(20, startHeight + deltaY);
+                    break;
+                case 'n':
+                    newHeight = Math.max(20, startHeight - deltaY);
+                    newTop = startTop + deltaY;
+                    break;
+                case 'se':
+                    newWidth = Math.max(20, startWidth + deltaX);
+                    newHeight = Math.max(20, startHeight + deltaY);
+                    break;
+                case 'sw':
+                    newWidth = Math.max(20, startWidth - deltaX);
+                    newHeight = Math.max(20, startHeight + deltaY);
+                    newLeft = startLeft + deltaX;
+                    break;
+                case 'ne':
+                    newWidth = Math.max(20, startWidth + deltaX);
+                    newHeight = Math.max(20, startHeight - deltaY);
+                    newTop = startTop + deltaY;
+                    break;
+                case 'nw':
+                    newWidth = Math.max(20, startWidth - deltaX);
+                    newHeight = Math.max(20, startHeight - deltaY);
+                    newLeft = startLeft + deltaX;
+                    newTop = startTop + deltaY;
+                    break;
             }
 
-            document.removeEventListener('mousemove', this.onMouseMove.bind(this));
-            document.removeEventListener('mouseup', this.onMouseUp.bind(this));
-            this.dragged = null;
-        }
+            this.updateElementSize(element.id, newWidth, newHeight, newLeft, newTop);
+        };
 
-        showGuidelines(x, y) {
-            this.hideGuidelines();
+        const mouseUpHandler = () => {
+            this.isResizing = false;
+            this.currentResizeHandle = null;
+            document.removeEventListener('mousemove', mouseMoveHandler);
+            document.removeEventListener('mouseup', mouseUpHandler);
+            this.saveToLocalStorage();
+        };
 
-            const formWrapper = document.getElementById('formWrapper');
-            const fields = formWrapper.querySelectorAll('.field:not(.dragging)');
+        document.addEventListener('mousemove', mouseMoveHandler);
+        document.addEventListener('mouseup', mouseUpHandler);
+    }
 
-            fields.forEach(field => {
-                const fieldRect = field.getBoundingClientRect();
-                const parentRect = formWrapper.getBoundingClientRect();
+    startColumnResize(e, tableElement) {
+        e.stopPropagation();
+        this.isResizingColumn = true;
+        const columnIndex = parseInt(e.target.dataset.column);
+        this.resizingColumnIndex = columnIndex;
 
-                const fieldX = fieldRect.left - parentRect.left;
-                const fieldY = fieldRect.top - parentRect.top;
+        const tableDiv = document.getElementById(tableElement.id);
+        const tableWidth = tableDiv.offsetWidth;
+        const startX = e.clientX;
+        const startWidths = [...tableElement.properties.columnWidths];
 
-                const tolerance = 5;
+        const mouseMoveHandler = (e) => {
+            if (!this.isResizingColumn) return;
 
-                if (Math.abs(x - fieldX) < tolerance) {
-                    this.createGuideline('vertical', fieldX);
-                }
+            const deltaX = (e.clientX - startX);
+            const deltaPercent = (deltaX / tableWidth) * 100;
 
-                if (Math.abs(y - fieldY) < tolerance) {
-                    this.createGuideline('horizontal', fieldY);
-                }
-            });
-        }
+            // Calculate new widths
+            const newWidths = [...startWidths];
+            const currentWidth = startWidths[columnIndex];
+            const nextWidth = startWidths[columnIndex + 1];
 
-        createGuideline(type, position) {
-            const guideline = document.createElement('div');
-            guideline.className = `guideline guideline-${type.charAt(0)}`;
-            guideline.style[type === 'vertical' ? 'left' : 'top'] = `${position}px`;
+            // Minimum width of 5%
+            const newCurrentWidth = Math.max(5, Math.min(currentWidth + deltaPercent, currentWidth + nextWidth - 5));
+            const widthChange = newCurrentWidth - currentWidth;
 
-            document.getElementById('formWrapper').appendChild(guideline);
-        }
+            newWidths[columnIndex] = newCurrentWidth;
+            newWidths[columnIndex + 1] = nextWidth - widthChange;
 
-        hideGuidelines() {
-            document.querySelectorAll('.guideline').forEach(el => el.remove());
-        }
-
-        handleFieldSelection(e) {
-            if (e.target.classList.contains('field')) {
-                this.selectField(e.target);
-            } else if (!e.target.closest('.properties-panel')) {
-                this.selectField(null);
-            }
-        }
-
-        selectField(field) {
-            document.querySelectorAll('.field.selected').forEach(el => el.classList.remove('selected'));
-            document.querySelectorAll('.resize-handle').forEach(h => h.style.display = 'none');
-            document.querySelectorAll('.line-endpoint').forEach(p => p.style.display = 'none');
-
-            this.selectedField = field;
-
-            if (field) {
-                field.classList.add('selected');
-                this.showProperties(field);
-            } else {
-                this.hideProperties();
+            // Ensure percentages add up to 100
+            const total = newWidths.reduce((sum, w) => sum + w, 0);
+            if (Math.abs(total - 100) > 0.01) {
+                const adjustment = 100 / total;
+                newWidths.forEach((w, i) => {
+                    newWidths[i] = w * adjustment;
+                });
             }
 
-            if (field && field.classList.contains('shape')) {
-                field.querySelectorAll('.resize-handle').forEach(h => h.style.display = 'block');
-            }
+            tableElement.properties.columnWidths = newWidths;
+            this.renderElement(tableElement);
+        };
 
-            if (field && (field.classList.contains('hline') || field.classList.contains('vline'))) {
-                field.querySelectorAll('.line-endpoint').forEach(p => p.style.display = 'block');
-            }
+        const mouseUpHandler = () => {
+            this.isResizingColumn = false;
+            this.resizingColumnIndex = null;
+            document.removeEventListener('mousemove', mouseMoveHandler);
+            document.removeEventListener('mouseup', mouseUpHandler);
+            this.saveToLocalStorage();
+        };
 
-            this.updateFieldList();
+        document.addEventListener('mousemove', mouseMoveHandler);
+        document.addEventListener('mouseup', mouseUpHandler);
+    }
+
+    updateElementPosition(id, x, y) {
+        const element = this.getElementById(id);
+        if (element) {
+            element.x = x;
+            element.y = y;
+            this.renderElement(element);
+        }
+    }
+
+    updateElementSize(id, width, height, x, y) {
+        const element = this.getElementById(id);
+        if (element) {
+            element.width = width;
+            element.height = height;
+            element.x = x;
+            element.y = y;
+            this.renderElement(element);
+        }
+    }
+
+    getElementById(id) {
+        return this.elements.find(el => el.id === id);
+    }
+
+    handleCanvasClick(e) {
+        if (e.target === this.canvas) {
+            this.deselectAll();
+        }
+    }
+
+    selectElement(element) {
+        this.deselectAll();
+        this.selectedElement = element;
+
+        const elementDiv = document.getElementById(element.id);
+        if (elementDiv) {
+            elementDiv.classList.add('selected');
         }
 
-        showProperties(field) {
-            const content = document.getElementById('propertiesContent');
-            const style = getComputedStyle(field);
+        this.showPropertiesPanel(element);
+    }
 
-            let textProps = '';
-            let shapeProps = '';
-            let lineProps = '';
-            let imageProps = '';
+    deselectAll() {
+        this.selectedElement = null;
+        document.querySelectorAll('.design-element').forEach(el => {
+            el.classList.remove('selected');
+        });
+        this.showPropertiesPanel(null);
+    }
 
-            if (field.classList.contains('label') || field.classList.contains('field') && !field.classList.contains('shape') && !field.classList.contains('line')) {
-                textProps = `
+    showPropertiesPanel(element) {
+        if (!element) {
+            this.propertiesContent.innerHTML = `
+                <div class="no-selection">
+                    <i class="fas fa-mouse-pointer"></i>
+                    <p>Select an element to edit its properties</p>
+                </div>
+            `;
+            return;
+        }
+
+        let propertiesHTML = `
+            <div class="property-group">
+                <h4>Element ID</h4>
+                <div class="form-group">
+                    <label>Custom ID (Optional)</label>
+                    <input type="text" value="${element.properties.elementId || ''}" 
+                           onchange="designer.updateElementId('${element.id}', this.value)"
+                           placeholder="Enter unique ID">
+                    <small style="display: block; margin-top: 4px; color: #7f8c8d; font-size: 11px;">
+                        Internal ID: ${element.id}
+                    </small>
+                </div>
+            </div>
+                
+        `;
+
+        // Type-specific properties
+        propertiesHTML += this.getTypeSpecificProperties(element);
+
+        propertiesHTML += `
+            <div class="property-group">
+                <h4>Position & Size</h4>
                     <div class="form-group">
-                        <label>Text</label>
-                        <input type="text" class="form-control" id="propText" value="${field.textContent}">
+                        <label>X Position</label>
+                        <input type="number" value="${element.x}" onchange="designer.updateElementProperty('${element.id}', 'x', this.value)">
                     </div>
                     <div class="form-group">
-                        <label>Text Alignment</label>
-                        <div class="alignment-buttons">
-                            <button class="btn btn-secondary ${style.textAlign === 'left' ? 'active' : ''}" id="alignLeft">Left</button>
-                            <button class="btn btn-secondary ${style.textAlign === 'center' ? 'active' : ''}" id="alignCenter">Center</button>
-                            <button class="btn btn-secondary ${style.textAlign === 'right' ? 'active' : ''}" id="alignRight">Right</button>
+                        <label>Y Position</label>
+                        <input type="number" value="${element.y}" onchange="designer.updateElementProperty('${element.id}', 'y', this.value)">
+                    </div>
+                `;
+
+        if (element.type !== 'table') {
+            propertiesHTML += `
+                <div class="form-group">
+                    <label>Width</label>
+                    <input type="number" value="${element.width}" onchange="designer.updateElementProperty('${element.id}', 'width', this.value)">
+                </div>
+                <div class="form-group">
+                    <label>Height</label>
+                    <input type="number" value="${element.height}" onchange="designer.updateElementProperty('${element.id}', 'height', this.value)">
+                </div>
+            `;
+        }
+
+        propertiesHTML += `</div>`;
+
+        this.propertiesContent.innerHTML = propertiesHTML;
+    }
+
+    getTypeSpecificProperties(element) {
+        const { type, properties } = element;
+
+        const commonTextProperties = `
+        <div class="form-group">
+            <label>Text Content</label>
+            <input type="text" value="${properties.text}" onchange="designer.updateElementProperty('${element.id}', 'text', this.value)">
+        </div>
+        <div class="form-group">
+            <label>Font Size (pt)</label>
+            <input type="number" value="${properties.fontSize}" onchange="designer.updateElementProperty('${element.id}', 'fontSize', this.value)">
+        </div>
+        <div class="form-group">
+            <label>Text Color</label>
+            <div class="color-input">
+                <input type="color" value="${properties.color}" onchange="designer.updateElementProperty('${element.id}', 'color', this.value)">
+                <input type="text" value="${properties.color}" onchange="designer.updateElementProperty('${element.id}', 'color', this.value)">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Text Align</label>
+            <select onchange="designer.updateElementProperty('${element.id}', 'textAlign', this.value)">
+                <option value="left" ${properties.textAlign === 'left' ? 'selected' : ''}>Left</option>
+                <option value="center" ${properties.textAlign === 'center' ? 'selected' : ''}>Center</option>
+                <option value="right" ${properties.textAlign === 'right' ? 'selected' : ''}>Right</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Font Weight</label>
+            <select onchange="designer.updateElementProperty('${element.id}', 'fontWeight', this.value)">
+                <option value="normal" ${properties.fontWeight === 'normal' ? 'selected' : ''}>Normal</option>
+                <option value="bold" ${properties.fontWeight === 'bold' ? 'selected' : ''}>Bold</option>
+            </select>
+        </div>
+    `;
+
+        switch (type) {
+            case 'text-field':
+                return `
+                <div class="property-group">
+                    <h4>Text Field</h4>
+                    ${commonTextProperties}
+                </div>
+            `;
+
+            case 'rectangle':
+                return `
+                    <div class="property-group">
+                        <h4>Rectangle</h4>
+                        <div class="form-group">
+                            <label>Fill Color</label>
+                            <div class="color-input">
+                                <input type="color" value="${properties.fillColor}" onchange="designer.updateElementProperty('${element.id}', 'fillColor', this.value)">
+                                <input type="text" value="${properties.fillColor}" onchange="designer.updateElementProperty('${element.id}', 'fillColor', this.value)">
+                            </div>
                         </div>
+                        <div class="form-group">
+                            <label>Border Color</label>
+                            <div class="color-input">
+                                <input type="color" value="${properties.borderColor}" onchange="designer.updateElementProperty('${element.id}', 'borderColor', this.value)">
+                                <input type="text" value="${properties.borderColor}" onchange="designer.updateElementProperty('${element.id}', 'borderColor', this.value)">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Border Width</label>
+                            <input type="number" value="${properties.borderWidth}" onchange="designer.updateElementProperty('${element.id}', 'borderWidth', this.value)">
+                        </div>
+                    </div>
+                `;
+
+            case 'vline':
+            case 'hline':
+                return `
+                    <div class="property-group">
+                        <h4>Line</h4>
+                        <div class="form-group">
+                            <label>Color</label>
+                            <div class="color-input">
+                                <input type="color" value="${properties.color}" onchange="designer.updateElementProperty('${element.id}', 'color', this.value)">
+                                <input type="text" value="${properties.color}" onchange="designer.updateElementProperty('${element.id}', 'color', this.value)">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Thickness</label>
+                            <input type="number" value="${properties.thickness}" onchange="designer.updateElementProperty('${element.id}', 'thickness', this.value)">
+                        </div>
+                    </div>
+                `;
+
+            case 'table':
+                let columnControls = '';
+                if (properties.columnWidths) {
+                    properties.columnWidths.forEach((width, index) => {
+                        columnControls += `
+                        <div class="form-group">
+                            <label>Column ${index + 1} Width (%)</label>
+                            <input type="number" value="${width.toFixed(2)}" step="0.1" min="5" max="95"
+                                   onchange="designer.updateTableColumnWidth('${element.id}', ${index}, this.value)">
+                        </div>
+                    `;
+                    });
+                }
+
+                return `
+                <div class="property-group">
+                    <h4>Table</h4>
+                    <div class="form-group">
+                        <label>Rows</label>
+                        <input type="number" value="${properties.rows}" onchange="designer.updateTableProperty('${element.id}', 'rows', this.value)">
+                    </div>
+                    <div class="form-group">
+                        <label>Columns</label>
+                        <input type="number" value="${properties.columns}" onchange="designer.updateTableProperty('${element.id}', 'columns', this.value)">
                     </div>
                     <div class="form-group">
                         <label>Font Size (pt)</label>
-                        <input type="number" class="form-control" id="propFontSize"
-                                value="${pxToPt(parseFloat(style.fontSize))}" min="6" max="72">
+                        <input type="number" value="${properties.fontSize || 12}" min="6" max="72" onchange="designer.updateTableProperty('${element.id}', 'fontSize', this.value)">
                     </div>
                     <div class="form-group">
-                        <label>Font Weight</label>
-                        <select class="form-control" id="propFontWeight">
-                            <option value="normal" ${style.fontWeight === 'normal' ? 'selected' : ''}>Normal</option>
-                            <option value="bold" ${style.fontWeight === 'bold' ? 'selected' : ''}>Bold</option>
-                        </select>
+                        <label>Header Text (comma separated)</label>
+                        <input type="text" value="${properties.headers.join(', ')}" onchange="designer.updateTableHeaders('${element.id}', this.value)">
                     </div>
-                    <div class="form-group">
-                        <label>Text Decoration</label>
-                        <select class="form-control" id="propTextDecoration">
-                            <option value="none" ${style.textDecoration === 'none' ? 'selected' : ''}>None</option>
-                            <option value="underline" ${style.textDecoration.includes('underline') ? 'selected' : ''}>Underline</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Text Color</label>
-                        <input type="color" class="color-picker" id="propTextColor" value="${this.rgbToHex(style.color)}">
+                </div>
+                <div class="property-group">
+                    <h4>Column Widths</h4>
+                    ${columnControls}
+                </div>
+            `;
+
+            case 'label':
+                return `
+                    <div class="property-group">
+                        <h4>Text Label</h4>
+                        ${commonTextProperties}
                     </div>
                 `;
-            }
 
-            if (field.classList.contains('shape')) {
-                shapeProps = `
-                    <div class="form-group">
-                        <label>Border Width (px)</label>
-                        <input type="number" class="form-control" id="propBorderWidth" value="${parseInt(style.borderWidth)}" min="0" max="10">
-                    </div>
-                    <div class="form-group">
-                        <label>Border Color</label>
-                        <input type="color" class="color-picker" id="propBorderColor" value="${this.rgbToHex(style.borderColor)}">
-                    </div>
-                `;
-            }
-
-            if (field.classList.contains('hline') || field.classList.contains('vline')) {
-                const borderProp = field.classList.contains('hline') ? 'borderTop' : 'borderRight';
-                const thickness = parseInt(style[borderProp + 'Width']) || 1;
-                const color = this.rgbToHex(style[borderProp + 'Color']) || '#000000';
-
-                lineProps = `
-                    <div class="form-group">
-                        <label>Line Thickness (px)</label>
-                        <input type="number" class="form-control" id="propLineThickness" 
-                               value="${thickness}" min="1" max="20">
-                    </div>
-                    <div class="form-group">
-                        <label>Line Color</label>
-                        <input type="color" class="color-picker" id="propLineColor" 
-                               value="${color}">
-                    </div>
-                `;
-            }
-
-            if (field.classList.contains('image-placeholder')) {
-                imageProps = `
-                    <div class="form-group">
-                        <label>Image Source</label>
-                        <input type="text" class="form-control" id="propImageSrc" placeholder="Enter image URL">
-                    </div>
-                    <div class="form-group">
-                        <label>Alternative Text</label>
-                        <input type="text" class="form-control" id="propImageAlt" placeholder="Enter alt text">
-                    </div>
-                `;
-            }
-
-            content.innerHTML = `
-                    <div class="form-group">
-                        <label>Element Type</label>
-                        <input type="text" class="form-control" id="propElementType" 
-                               value="${field.classList.contains('shape') ? 'Shape' :
-                                field.classList.contains('hline') ? 'Horizontal Line' :
-                                    field.classList.contains('vline') ? 'Vertical Line' :
-                                        field.classList.contains('image-placeholder') ? 'Image' :
-                                            field.classList.contains('label') ? 'Label' : 'Field'}" disabled>
-                    </div>
-        
-                    ${textProps}
-                    ${shapeProps}
-                    ${lineProps}
-                    ${imageProps}
-        
-                    <div class="input-group">
-                        <div class="input-group-sm">
-                            <label>Width (px)</label>
-                            <input type="number" class="form-control" id="propWidth" 
-                                   value="${parseInt(style.width)}" min="10">
-                        </div>
-                        <div class="input-group-sm">
-                            <label>Height (px)</label>
-                            <input type="number" class="form-control" id="propHeight" 
-                                   value="${parseInt(style.height)}" min="10">
+            case 'checkbox':
+                return `
+                    <div class="property-group">
+                        <h4>Checkbox</h4>
+                        <div class="form-group">
+                            <label>Label Text</label>
+                            <input type="text" value="${properties.text}" onchange="designer.updateElementProperty('${element.id}', 'text', this.value)">
                         </div>
                     </div>
-        
-                    <div class="input-group">
-                        <div class="input-group-sm">
-                            <label>Left (px)</label>
-                            <input type="number" class="form-control" id="propLeft" 
-                                   value="${parseInt(style.left)}" min="0">
+                `;
+
+            case 'signature':
+                return `
+                    <div class="property-group">
+                        <h4>Signature Box</h4>
+                        <div class="form-group">
+                            <label>Label Text</label>
+                            <input type="text" value="${properties.text}" onchange="designer.updateElementProperty('${element.id}', 'text', this.value)">
                         </div>
-                        <div class="input-group-sm">
-                            <label>Top (px)</label>
-                            <input type="number" class="form-control" id="propTop" 
-                                   value="${parseInt(style.top)}" min="0">
+                        <div class="form-group">
+                            <label>Border Color</label>
+                            <div class="color-input">
+                                <input type="color" value="${properties.borderColor}" onchange="designer.updateElementProperty('${element.id}', 'borderColor', this.value)">
+                                <input type="text" value="${properties.borderColor}" onchange="designer.updateElementProperty('${element.id}', 'borderColor', this.value)">
+                            </div>
                         </div>
-                    </div>
-        
-                    <div class="form-group">
-                        <button class="btn btn-danger" id="deleteField">Delete</button>
-                        <button class="btn btn-secondary" id="duplicateField">Duplicate</button>
                     </div>
                 `;
 
-            this.bindPropertyEvents(field);
+            default:
+                return '';
+        }
+    }
+
+    updateElementId(elementId, newId) {
+        if (newId.trim() === '') {
+            this.updateElementProperty(elementId, 'elementId', '');
+            return;
         }
 
-        bindPropertyEvents(field) {
-            // Text properties
-            const propText = document.getElementById('propText');
-            if (propText) {
-                propText.addEventListener('input', (e) => {
-                    field.textContent = e.target.value;
-                    this.updateFieldList();
-                    this.saveState();
-                });
+        // Check if ID already exists
+        const existingElement = this.elements.find(el =>
+            el.properties.elementId === newId && el.id !== elementId
+        );
+
+        if (existingElement) {
+            alert('This ID is already used by another element. Please choose a different ID.');
+            // Reset the input to the previous value
+            const element = this.getElementById(elementId);
+            const input = document.querySelector(`input[onchange*="updateElementId('${elementId}'"]`);
+            if (input) {
+                input.value = element.properties.elementId;
             }
-
-            const propFontSize = document.getElementById('propFontSize');
-            if (propFontSize) {
-                propFontSize.addEventListener('input', (e) => {
-                    field.style.fontSize = e.target.value + 'pt';
-                    this.saveState();
-                });
-            }
-
-            const propFontWeight = document.getElementById('propFontWeight');
-            if (propFontWeight) {
-                propFontWeight.addEventListener('change', (e) => {
-                    field.style.fontWeight = e.target.value;
-                    this.saveState();
-                });
-            }
-
-            const propTextDecoration = document.getElementById('propTextDecoration');
-            if (propTextDecoration) {
-                propTextDecoration.addEventListener('change', (e) => {
-                    field.style.textDecoration = e.target.value;
-                    this.saveState();
-                });
-            }
-
-            const propTextColor = document.getElementById('propTextColor');
-            if (propTextColor) {
-                propTextColor.addEventListener('input', (e) => {
-                    field.style.color = e.target.value;
-                    this.saveState();
-                });
-            }
-
-            const propImageSrc = document.getElementById('propImageSrc');
-            if (propImageSrc) {
-                propImageSrc.addEventListener('input', (e) => {
-                    // This will be used when exporting to HTML
-                    field.dataset.src = e.target.value;
-                    this.saveState();
-                });
-            }
-
-            const propImageAlt = document.getElementById('propImageAlt');
-            if (propImageAlt) {
-                propImageAlt.addEventListener('input', (e) => {
-                    // This will be used when exporting to HTML
-                    field.dataset.alt = e.target.value;
-                    this.saveState();
-                });
-            }
-
-            document.getElementById('alignLeft')?.addEventListener('click', (e) => {
-                e.preventDefault();
-                field.style.textAlign = 'left';
-                document.querySelectorAll('#alignLeft, #alignCenter, #alignRight').forEach(btn => btn.classList.remove('active'));
-                e.target.classList.add('active');
-                this.saveState();
-            });
-
-            document.getElementById('alignCenter')?.addEventListener('click', (e) => {
-                e.preventDefault();
-                field.style.textAlign = 'center';
-                document.querySelectorAll('#alignLeft, #alignCenter, #alignRight').forEach(btn => btn.classList.remove('active'));
-                e.target.classList.add('active');
-                this.saveState();
-            });
-
-            document.getElementById('alignRight')?.addEventListener('click', (e) => {
-                e.preventDefault();
-                field.style.textAlign = 'right';
-                document.querySelectorAll('#alignLeft, #alignCenter, #alignRight').forEach(btn => btn.classList.remove('active'));
-                e.target.classList.add('active');
-                this.saveState();
-            });
-
-            // Shape properties
-            const propBorderWidth = document.getElementById('propBorderWidth');
-            if (propBorderWidth) {
-                propBorderWidth.addEventListener('input', (e) => {
-                    field.style.borderWidth = e.target.value + 'px';
-                    this.saveState();
-                });
-            }
-
-            const propBorderColor = document.getElementById('propBorderColor');
-            if (propBorderColor) {
-                propBorderColor.addEventListener('input', (e) => {
-                    field.style.borderColor = e.target.value;
-                    this.saveState();
-                });
-            }
-
-            // Line properties
-            const propLineThickness = document.getElementById('propLineThickness');
-            if (propLineThickness && (field.classList.contains('hline') || field.classList.contains('vline'))) {
-                propLineThickness.addEventListener('input', (e) => {
-                    if (field.classList.contains('hline')) {
-                        field.style.borderTopWidth = e.target.value + 'px';
-                    } else {
-                        field.style.borderRightWidth = e.target.value + 'px';
-                    }
-                    this.saveState();
-                });
-            }
-
-            const propLineColor = document.getElementById('propLineColor');
-            if (propLineColor && (field.classList.contains('hline') || field.classList.contains('vline'))) {
-                propLineColor.addEventListener('input', (e) => {
-                    if (field.classList.contains('hline')) {
-                        field.style.borderTopColor = e.target.value;
-                        field.style.borderTopStyle = 'solid';
-                    } else {
-                        field.style.borderRightColor = e.target.value;
-                        field.style.borderRightStyle = 'solid';
-                    }
-                    this.saveState();
-                });
-            }
-
-            // Dimensions
-            const propWidth = document.getElementById('propWidth');
-            if (propWidth) {
-                propWidth.addEventListener('input', (e) => {
-                    field.style.width = e.target.value + 'px';
-                    this.saveState();
-                });
-            }
-
-            const propHeight = document.getElementById('propHeight');
-            if (propHeight) {
-                propHeight.addEventListener('input', (e) => {
-                    field.style.height = e.target.value + 'px';
-                    this.saveState();
-                });
-            }
-
-            // Position
-            const propLeft = document.getElementById('propLeft');
-            if (propLeft) {
-                propLeft.addEventListener('input', (e) => {
-                    field.style.left = e.target.value + 'px';
-                    this.saveState();
-                });
-            }
-
-            const propTop = document.getElementById('propTop');
-            if (propTop) {
-                propTop.addEventListener('input', (e) => {
-                    field.style.top = e.target.value + 'px';
-                    this.saveState();
-                });
-            }
-
-            // Actions
-            document.getElementById('deleteField').addEventListener('click', () => {
-                this.deleteField(field);
-            });
-
-            document.getElementById('duplicateField').addEventListener('click', () => {
-                this.duplicateField(field);
-            });
+        } else {
+            this.updateElementProperty(elementId, 'elementId', newId);
         }
+    }
 
-        hideProperties() {
-            const content = document.getElementById('propertiesContent');
-            content.innerHTML = '<div class="no-selection">Select a field to edit its properties</div>';
-        }
-
-        deleteField(field) {
-            if (confirm('Are you sure you want to delete this field?')) {
-                field.remove();
-                this.selectedField = null;
-                this.hideProperties();
-                this.updateFieldList();
-                this.saveState();
-            }
-        }
-
-        duplicateField(field) {
-            const duplicate = field.cloneNode(true);
-            duplicate.classList.remove('selected');
-
-            const oldClass = Array.from(field.classList).find(c => c.startsWith('field-'));
-            let baseName = 'duplicate';
-            let nextNum = 1;
-
-            if (oldClass) {
-                const parts = oldClass.split('-');
-                if (parts.length >= 2) {
-                    baseName = parts[1];
-                }
-                nextNum = this.getNextFieldNumber(baseName);
-            }
-
-            this.fieldCounter = Math.max(this.fieldCounter, nextNum);
-
-            if (oldClass) {
-                duplicate.classList.remove(oldClass);
-            }
-            duplicate.classList.add(`field-${baseName}-${this.fieldCounter}`);
-
-            const currentLeft = parseInt(duplicate.style.left);
-            const currentTop = parseInt(duplicate.style.top);
-            duplicate.style.left = (currentLeft) + 'px';
-            duplicate.style.top = (currentTop + 15) + 'px';
-
-            document.getElementById('formWrapper').appendChild(duplicate);
-
-            // Setup appropriate events based on field type
-            if (duplicate.classList.contains('line')) {
-                this.setupLineEvents(duplicate);
-            } else if (duplicate.classList.contains('shape')) {
-                this.setupShapeEvents(duplicate);
-                this.addResizeHandles(duplicate);
+    updateElementProperty(elementId, property, value) {
+        const element = this.getElementById(elementId);
+        if (element) {
+            if (property === 'x' || property === 'y' || property === 'width' || property === 'height') {
+                element[property] = parseInt(value);
+            } else if (property === 'fontSize') {
+                element.properties[property] = parseInt(value);
             } else {
-                this.setupFieldEvents(duplicate);
+                element.properties[property] = value;
+            }
+            this.renderElement(element);
+            this.saveToLocalStorage();
+        }
+    }
+
+    updateTableProperty(elementId, property, value) {
+        const element = this.getElementById(elementId);
+        if (element && element.type === 'table') {
+            const newValue = parseInt(value);
+            element.properties[property] = newValue;
+
+            // Initialize or update column widths and headers
+            if (property === 'columns') {
+                const currentColumns = element.properties.columnWidths?.length || 0;
+                if (newValue > currentColumns) {
+                    // Add new columns with equal distribution
+                    const equalWidth = 100 / newValue;
+                    element.properties.columnWidths = Array(newValue).fill(equalWidth);
+                    element.properties.headers = [
+                        ...(element.properties.headers || Array(currentColumns).fill('Header')),
+                        ...Array(newValue - currentColumns).fill('Header')
+                    ];
+                } else if (newValue < currentColumns) {
+                    // Remove columns and redistribute percentages
+                    element.properties.columnWidths = element.properties.columnWidths.slice(0, newValue);
+                    element.properties.headers = element.properties.headers.slice(0, newValue);
+
+                    // Normalize to 100%
+                    const total = element.properties.columnWidths.reduce((sum, w) => sum + w, 0);
+                    element.properties.columnWidths = element.properties.columnWidths.map(w => (w / total) * 100);
+                }
             }
 
-            this.selectField(duplicate);
-            this.updateFieldList();
-            this.saveState();
+            this.renderElement(element);
+            this.saveToLocalStorage();
         }
-
-        getNextFieldNumber(baseName) {
-            const fields = document.querySelectorAll('.field');
-            const existingNumbers = [];
-
-            fields.forEach(field => {
-                const classes = Array.from(field.classList);
-                classes.forEach(className => {
-                    if (className.startsWith(`field-${baseName}-`)) {
-                        const num = parseInt(className.split('-').pop());
-                        if (!isNaN(num)) existingNumbers.push(num);
-                    } else if (className.startsWith(`field-${baseName}`)) {
-                        const parts = className.split('-');
-                        if (parts.length === 3) {
-                            const num = parseInt(parts[2]);
-                            if (!isNaN(num)) existingNumbers.push(num);
-                        }
-                    }
-                });
-            });
-
-            if (existingNumbers.length === 0) return 1;
-
-            const maxNumber = Math.max(...existingNumbers);
-            return maxNumber + 1;
-        }
-
-        updateFieldList() {
-            const fieldList = document.getElementById('fieldList');
-            const fields = document.querySelectorAll('.field');
-
-            fieldList.innerHTML = '';
-
-            fields.forEach((field, index) => {
-                const item = document.createElement('div');
-                item.className = 'field-item';
-                item.textContent = field.textContent || `Field ${index + 1}`;
-
-                if (field === this.selectedField) {
-                    item.classList.add('selected');
-                }
-
-                item.addEventListener('click', () => {
-                    this.selectField(field);
-                });
-
-                fieldList.appendChild(item);
-            });
-        }
-
-        handleKeyboard(e) {
-            if (!this.selectedField) return;
-
-            const moveAmount = e.ctrlKey || e.metaKey ? 10 : 1;
-
-            switch (e.key) {
-                case 'ArrowUp':
-                    e.preventDefault();
-                    this.selectedField.style.top = (parseInt(this.selectedField.style.top) - moveAmount) + 'px';
-                    this.saveState();
-                    break;
-                case 'ArrowDown':
-                    e.preventDefault();
-                    this.selectedField.style.top = (parseInt(this.selectedField.style.top) + moveAmount) + 'px';
-                    this.saveState();
-                    break;
-                case 'ArrowLeft':
-                    e.preventDefault();
-                    this.selectedField.style.left = (parseInt(this.selectedField.style.left) - moveAmount) + 'px';
-                    this.saveState();
-                    break;
-                case 'ArrowRight':
-                    e.preventDefault();
-                    this.selectedField.style.left = (parseInt(this.selectedField.style.left) + moveAmount) + 'px';
-                    this.saveState();
-                    break;
-                case 'Delete':
-                    e.preventDefault();
-                    this.deleteField(this.selectedField);
-                    break;
-                case 'Escape':
-                    this.selectField(null);
-                    break;
-            }
-        }
-
-        zoom(factor) {
-            this.zoomLevel *= factor;
-            this.zoomLevel = Math.max(0.1, Math.min(5, this.zoomLevel));
-
-            const formWrapper = document.getElementById('formWrapper');
-            formWrapper.style.transform = `scale(${this.zoomLevel})`;
-            formWrapper.style.transformOrigin = 'top left';
-
-            document.getElementById('zoomLevel').textContent = Math.round(this.zoomLevel * 100) + '%';
-        }
-
-        fitToPage() {
-            const container = document.querySelector('.canvas-container');
-            const wrapper = document.getElementById('formWrapper');
-
-            const containerWidth = container.clientWidth - 40;
-            const containerHeight = container.clientHeight - 40;
-
-            const wrapperWidth = wrapper.offsetWidth;
-            const wrapperHeight = wrapper.offsetHeight;
-
-            const scaleX = containerWidth / wrapperWidth;
-            const scaleY = containerHeight / wrapperHeight;
-
-            this.zoomLevel = Math.min(scaleX, scaleY);
-
-            wrapper.style.transform = `scale(${this.zoomLevel})`;
-            wrapper.style.transformOrigin = 'top left';
-
-            document.getElementById('zoomLevel').textContent = Math.round(this.zoomLevel * 100) + '%';
-        }
-
-        updateMousePosition(e) {
-            const rect = e.currentTarget.getBoundingClientRect();
-            const x = Math.round((e.clientX - rect.left) / this.zoomLevel);
-            const y = Math.round((e.clientY - rect.top) / this.zoomLevel);
-
-            this.updatePositionInfo(x, y);
-        }
-
-        updatePositionInfo(x, y) {
-            document.getElementById('positionInfo').textContent = `Position: ${x}, ${y}`;
-        }
-
-        updateStatus(message) {
-            document.getElementById('statusText').textContent = message;
-            setTimeout(() => {
-                document.getElementById('statusText').textContent = 'Ready';
-            }, 3000);
-        }
-
-        saveState() {
-            const state = {
-                fields: [],
-                canvasSize: {
-                    width: document.getElementById('canvasWidth').value,
-                    height: document.getElementById('canvasHeight').value
-                }
-            };
-
-            document.querySelectorAll('.field').forEach(field => {
-                const fieldData = {
-                    text: field.textContent,
-                    className: Array.from(field.classList).find(c => c.startsWith('field-')),
-                    style: {
-                        left: field.style.left,
-                        top: field.style.top,
-                        width: field.style.width,
-                        height: field.style.height,
-                        fontSize: field.style.fontSize,
-                        fontFamily: field.style.fontFamily,
-                        fontWeight: field.style.fontWeight,
-                        textDecoration: field.style.textDecoration,
-                        color: field.style.color,
-                        backgroundColor: field.style.backgroundColor,
-                        borderWidth: field.style.borderWidth,
-                        borderStyle: field.style.borderStyle,
-                        borderColor: field.style.borderColor,
-                        transform: field.style.transform
-                    }
-                };
-                state.fields.push(fieldData);
-            });
-
-            this.history = this.history.slice(0, this.historyIndex + 1);
-            this.history.push(JSON.stringify(state));
-            this.historyIndex++;
-
-            if (this.history.length > 50) {
-                this.history.shift();
-                this.historyIndex--;
-            }
-            this.hasUnsavedChanges = true;
-        }
-
-        undo() {
-            if (this.historyIndex > 0) {
-                this.historyIndex--;
-                this.restoreState(JSON.parse(this.history[this.historyIndex]));
-                this.updateStatus('Undo');
-            }
-        }
-
-        redo() {
-            if (this.historyIndex < this.history.length - 1) {
-                this.historyIndex++;
-                this.restoreState(JSON.parse(this.history[this.historyIndex]));
-                this.updateStatus('Redo');
-            }
-        }
-
-        restoreState(state) {
-            document.querySelectorAll('.field').forEach(field => field.remove());
-
-            document.getElementById('canvasWidth').value = state.canvasSize.width;
-            document.getElementById('canvasHeight').value = state.canvasSize.height;
-            this.updateCanvasSize();
-
-            state.fields.forEach(fieldData => {
-                const field = document.createElement('div');
-                field.className = 'field draggable ' + fieldData.className;
-                field.textContent = fieldData.text;
-                field.contentEditable = true;
-
-                Object.assign(field.style, fieldData.style);
-
-                // Special handling for lines to ensure border properties
-                if (fieldData.className.includes('line')) {
-                    if (!field.style.borderTop && !field.style.borderTopWidth) {
-                        // If no border properties exist, set defaults
-                        field.style.borderTop = '1px solid #000';
-                        field.style.height = '0px';
-                        field.style.backgroundColor = 'transparent';
-                    }
-                }
-
-                if (fieldData.className.includes('rectangle')) {
-                    this.addResizeHandles(field);
-                }
-
-                if (fieldData.className.includes('line')) {
-                    const startPoint = document.createElement('div');
-                    startPoint.className = 'line-endpoint start-point';
-                    startPoint.style.display = 'none';
-
-                    const endPoint = document.createElement('div');
-                    endPoint.className = 'line-endpoint end-point';
-                    endPoint.style.display = 'none';
-
-                    const rotateHandle = document.createElement('div');
-                    rotateHandle.className = 'rotate-handle';
-                    rotateHandle.style.display = 'none';
-
-                    field.appendChild(startPoint);
-                    field.appendChild(endPoint);
-                    field.appendChild(rotateHandle);
-                }
-
-                document.getElementById('formWrapper').appendChild(field);
-                this.setupFieldEvents(field);
-            });
-
-            this.selectedField = null;
-            this.hideProperties();
-            this.updateFieldList();
-        }
-
-        rgbToHex(rgb) {
-            if (rgb.startsWith('#')) return rgb;
-
-            const match = rgb.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)$/);
-            if (!match) return '#000000';
-
-            const r = parseInt(match[1]);
-            const g = parseInt(match[2]);
-            const b = parseInt(match[3]);
-
-            return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
-        }
-
-        selectTextContent(element) {
-            const range = document.createRange();
-            range.selectNodeContents(element);
-            const selection = window.getSelection();
-            selection.removeAllRanges();
-            selection.addRange(range);
-        }
-
-        downloadHtml() {
-            const formWrapper = document.getElementById('formWrapper').cloneNode(true);
-            const canvasWidth = document.getElementById('canvasWidth').value;
-            const canvasHeight = document.getElementById('canvasHeight').value;
-
-            // Remove editor-specific elements
-            formWrapper.querySelectorAll('.rulers, .guideline').forEach(el => el.remove());
-            formWrapper.querySelectorAll('.resize-handle, .line-endpoint').forEach(el => el.remove());
-            formWrapper.classList.remove('grid-bg');
-
-            // Process all fields for clean output
-            const cssLines = [];
-            const usedClasses = new Set();
-
-            formWrapper.querySelectorAll('.field').forEach(field => {
-                // Remove editor-specific classes and attributes
-                field.classList.remove('selected', 'dragging', 'draggable');
-                field.removeAttribute('contenteditable');
-
-                // Get the field's class name
-                let className = Array.from(field.classList).find(c => c.startsWith('field-'));
-                if (!className) {
-                    className = `field-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-                    field.classList.add(className);
-                }
-
-                // Skip if we've already processed this class
-                if (usedClasses.has(className)) return;
-                usedClasses.add(className);
-
-                // Build CSS rules from inline styles
-                const style = field.style;
-                const styleRules = [];
-
-                // Common properties
-                if (style.top) styleRules.push(`top: ${style.top}`);
-                if (style.left) styleRules.push(`left: ${style.left}`);
-                if (style.width) styleRules.push(`width: ${style.width}`);
-                if (style.height) styleRules.push(`height: ${style.height}`);
-
-                // Special handling for horizontal lines
-                if (field.classList.contains('hline')) {
-                    if (style.borderTop) {
-                        styleRules.push(`border-top: ${style.borderTop}`);
-                    } else {
-                        styleRules.push('border-top: 1px solid #000');
-                    }
-                    styleRules.push('height: 0');
-                    styleRules.push('background-color: transparent');
-                }
-                // Special handling for vertical lines
-                else if (field.classList.contains('vline')) {
-                    if (style.borderRight) {
-                        styleRules.push(`border-right: ${style.borderRight}`);
-                    } else {
-                        styleRules.push('border-right: 1px solid #000');
-                    }
-                    styleRules.push('width: 0');
-                    styleRules.push('background-color: transparent');
-                }
-                else {
-                    // Regular field styles
-                    styleRules.push(`font-size: ${style.fontSize || '8pt'}`);
-                    styleRules.push(`text-align: ${style.textAlign || 'left'}`);
-                    if (style.fontWeight) styleRules.push(`font-weight: ${style.fontWeight}`);
-                    if (style.textDecoration) styleRules.push(`text-decoration: ${style.textDecoration}`);
-                    if (style.color) styleRules.push(`color: ${style.color}`);
-                    if (style.backgroundColor) styleRules.push(`background-color: ${style.backgroundColor}`);
-                    if (style.border) styleRules.push(`border: ${style.border}`);
-                }
-
-                // Add position absolute (required for proper rendering)
-                styleRules.push('position: absolute;');
-
-                // Add to CSS lines if we have any rules
-                if (styleRules.length > 0) {
-                    cssLines.push(`.${className} { ${styleRules.join('; ')} }`);
-                }
-
-                // Clear inline styles (they'll be in the stylesheet)
-                field.removeAttribute('style');
-            });
-
-            // Convert image placeholders
-            formWrapper.querySelectorAll('.image-placeholder').forEach(img => {
-                const src = img.dataset.src || '';
-                const alt = img.dataset.alt || '';
-
-                const imgElement = document.createElement('img');
-                imgElement.className = 'exported-image';
-                imgElement.src = src;
-                imgElement.alt = alt;
-
-                // Transfer positional classes
-                Array.from(img.classList).forEach(cls => {
-                    if (cls.startsWith('field-image-')) {
-                        imgElement.classList.add(cls);
-                    }
-                });
-
-                // Replace placeholder with actual image
-                img.replaceWith(imgElement);
-            });
-
-            const htmlContent = `<!DOCTYPE html>
-                        <html lang="en">
-                            <head>
-                                <meta charset="UTF-8">
-                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                                <title>Generated Template</title>
-                                <style>
-                                    body {
-                                        margin: 0;
-                                        padding: 0;
-                                        font-family: Arial, sans-serif;
-                                    }
-
-                                    .form-wrapper {
-                                        position: relative;
-                                        width: ${canvasWidth}in;
-                                        height: ${canvasHeight}in;
-                                        border: 1px solid #000;
-                                        margin: 0 auto;
-                                        background: white;
-                                    }
-
-                                    ${cssLines.join('\n')}
-                                </style>
-                            </head>
-                            <body>
-                                ${formWrapper.outerHTML}
-                            </body>
-                        </html>`;
-
-            const blob = new Blob([htmlContent], { type: 'text/html' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'template.html';
-            a.click();
-            URL.revokeObjectURL(url);
-
-            this.updateStatus('HTML template downloaded');
-            this.resetUnsavedChanges();
-        }
-
-        downloadPdf() {
-            const originalWrapper = document.getElementById('formWrapper');
-            const formWrapper = originalWrapper.cloneNode(true);
-
-            // Preserve 'hide-labels' class
-            if (originalWrapper.classList.contains('hide-labels')) {
-                formWrapper.classList.add('hide-labels');
-            }
-
-            // Remove editor-specific elements
-            formWrapper.querySelectorAll('.rulers, .guideline').forEach(el => el.remove());
-            formWrapper.querySelectorAll('.resize-handle, .line-endpoint').forEach(el => {
-                el.style.display = 'none';
-            });
-
-            formWrapper.classList.remove('grid-bg');
-
-            // Clean up field classes and styles
-            formWrapper.querySelectorAll('.field').forEach(field => {
-                field.classList.remove('selected', 'dragging');
-                field.contentEditable = false;
-
-                // Special handling for horizontal lines
-                if (field.classList.contains('hline')) {
-                    if (!field.style.borderTop && !field.style.borderTopWidth) {
-                        field.style.borderTop = '1px solid #000';
-                        field.style.height = '0';
-                        field.style.backgroundColor = 'transparent';
-                    }
-                }
-                // Special handling for vertical lines
-                else if (field.classList.contains('vline')) {
-                    if (!field.style.borderRight && !field.style.borderRightWidth) {
-                        field.style.borderRight = '1px solid #000';
-                        field.style.width = '0';
-                        field.style.backgroundColor = 'transparent';
-                    }
-                }
-                // Special handling for image placeholders
-                else if (field.classList.contains('image-placeholder')) {
-                    const src = field.dataset.src || '';
-                    const alt = field.dataset.alt || '';
-                    const width = field.style.width || '100px';
-                    const height = field.style.height || '100px';
-
-                    field.outerHTML = `<img src="${src}" alt="${alt}" style="position:absolute;width:${width};height:${height};${field.style.cssText}">`;
-                }
-            });
-
-            const canvasWidth = document.getElementById('canvasWidth').value;
-            const canvasHeight = document.getElementById('canvasHeight').value;
-
-            const htmlContent = `<!DOCTYPE html>
-                    <html lang="en">
-                        <head>
-                            <meta charset="UTF-8">
-                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                            <title>PDF Export</title>
-                            <style>
-                                body {
-                                    margin: 0;
-                                    padding: 0;
-                                    font-family: Arial, sans-serif;
-                                }
-
-                                .form-wrapper {
-                                    position: relative;
-                                    width: ${canvasWidth}in;
-                                    height: ${canvasHeight}in;
-                                    margin: 0;
-                                    background: white;
-                                }
-
-                                .field {
-                                    position: absolute;
-                                    font-weight: normal;
-                                    padding: 0px;
-                                    font-size: 8pt;
-                                }
-
-                                .hide-labels .label {
-                                    display: none !important;
-                                }
-
-                                @media print {
-                                    @page {
-                                        size: ${canvasWidth}in ${canvasHeight}in;
-                                        margin: 0;
-                                    }
-
-                                    body {
-                                        margin: 0;
-                                        padding: 0;
-                                    }
-
-                                    .form-wrapper {
-                                        border: none;
-                                        margin: 0;
-                                    }
-                                }
-                            </style>
-                        </head>
-                        <body>
-                            ${formWrapper.outerHTML}
-                        </body>
-                    </html>`;
-
-            const printWindow = window.open('', '_blank');
-            printWindow.document.write(htmlContent);
-            printWindow.document.close();
-
-            printWindow.onload = function () {
-                printWindow.focus();
-                printWindow.print();
-                printWindow.close();
-            };
-
-            this.updateStatus('PDF download initiated');
-        }
-
-
-        loadHtmlTemplate(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            if (!confirm("This will override the current layout. Continue?")) {
-                event.target.value = "";
+    }
+
+    updateTableColumnWidth(elementId, columnIndex, width) {
+        const element = this.getElementById(elementId);
+        if (element && element.type === 'table') {
+            const newWidth = parseFloat(width);
+            if (newWidth < 5 || newWidth > 95) {
+                alert('Column width must be between 5% and 95%');
+                this.showPropertiesPanel(element);
                 return;
             }
 
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(e.target.result, 'text/html');
-                const importedWrapper = doc.querySelector('.form-wrapper');
+            element.properties.columnWidths[columnIndex] = newWidth;
 
-                if (!importedWrapper) {
-                    alert("Invalid template. No .form-wrapper found.");
-                    return;
-                }
+            // Normalize all widths to add up to 100%
+            const total = element.properties.columnWidths.reduce((sum, w) => sum + w, 0);
+            element.properties.columnWidths = element.properties.columnWidths.map(w => (w / total) * 100);
 
-                // Clean up the imported template
-                const container = document.querySelector('.canvas-container');
-                const oldWrapper = document.getElementById('formWrapper');
-                if (oldWrapper) oldWrapper.remove();
-
-                importedWrapper.id = 'formWrapper';
-                container.insertBefore(importedWrapper, container.querySelector('.zoom-controls'));
-
-                // First collect all style rules from the document
-                const styleRules = {};
-                try {
-                    // Parse style tags
-                    doc.querySelectorAll('style').forEach(styleTag => {
-                        const css = styleTag.textContent;
-                        // Match CSS rules for field classes
-                        const ruleMatches = css.matchAll(/\.(field-[^\s{]+)\s*{([^}]+)}/g);
-                        for (const match of ruleMatches) {
-                            const className = match[1].trim();
-                            styleRules[className] = match[2].trim();
-                        }
-                    });
-                } catch (e) {
-                    console.error("Error parsing styles:", e);
-                }
-
-                // Process all fields - apply ONLY stylesheet styles
-                importedWrapper.querySelectorAll('.field, img').forEach(field => {
-                    // Convert img tags back to image placeholders
-                    if (field.tagName.toLowerCase() === 'img') {
-                        const placeholder = document.createElement('div');
-                        placeholder.className = 'field label draggable image-placeholder';
-
-                        // Preserve the original class if it exists
-                        const imgClass = Array.from(field.classList).find(c => c.startsWith('field-image-'));
-                        if (imgClass) {
-                            placeholder.classList.add(imgClass);
-                        } else {
-                            placeholder.classList.add(`field-image-${Date.now()}`);
-                        }
-
-                        // Transfer attributes
-                        placeholder.dataset.src = field.src || '';
-                        placeholder.dataset.alt = field.alt || '';
-
-                        // Create placeholder content
-                        placeholder.innerHTML = '<span>Image Placeholder</span>';
-
-                        // Apply styles from stylesheet
-                        const matchingRule = this.findMatchingStyleRule(field, styleRules);
-                        if (matchingRule) {
-                            this.applyStylesFromRule(placeholder, matchingRule);
-                        }
-
-                        // Replace img with placeholder
-                        field.replaceWith(placeholder);
-                        field = placeholder;
-                    }
-
-                    // Find all field-related classes
-                    const fieldClasses = Array.from(field.classList).filter(c => c.startsWith('field-'));
-                    if (fieldClasses.length === 0 && !field.classList.contains('image-placeholder')) return;
-
-                    // Clear all inline styles except contentEditable
-                    const wasEditable = field.contentEditable === 'true';
-                    field.removeAttribute('style');
-                    field.contentEditable = wasEditable;
-
-                    // Apply styles from all matching class rules
-                    fieldClasses.forEach(className => {
-                        if (styleRules[className]) {
-                            const declarations = styleRules[className].split(';');
-                            declarations.forEach(declaration => {
-                                const [prop, value] = declaration.split(':').map(p => p.trim());
-                                if (prop && value) {
-                                    // Convert CSS property names to JS style names
-                                    const jsProp = prop.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
-                                    field.style[jsProp] = value;
-                                }
-                            });
-                        }
-                    });
-
-                    // Special handling for horizontal lines
-                    if (field.classList.contains('hline')) {
-                        if (!field.style.borderTop && !field.style.borderTopWidth) {
-                            field.style.borderTop = '1px solid #000';
-                            field.style.height = '0';
-                            field.style.backgroundColor = 'transparent';
-                        }
-                    }
-                    // Special handling for vertical lines
-                    else if (field.classList.contains('vline')) {
-                        if (!field.style.borderRight && !field.style.borderRightWidth) {
-                            field.style.borderRight = '1px solid #000';
-                            field.style.width = '0';
-                            field.style.backgroundColor = 'transparent';
-                        }
-                    }
-                    // Special handling for image placeholders
-                    else if (field.classList.contains('image-placeholder')) {
-                        field.style.backgroundColor = '#f0f0f0';
-                        field.style.border = '1px dashed #999';
-                        field.style.display = 'flex';
-                        field.style.alignItems = 'center';
-                        field.style.justifyContent = 'center';
-                        field.innerHTML = '<span style="color:#666;font-size:8pt;">Image Placeholder</span>';
-                    }
-                    // Special handling for rectangle shapes
-                    else if (field.classList.contains('rectangle') &&
-                        !field.style.border &&
-                        !field.style.borderWidth &&
-                        !field.style.borderColor) {
-                        field.style.border = '1px solid #000';
-                        field.style.backgroundColor = 'transparent';
-                    }
-
-                    // Force these editor-required styles if not set
-                    if (!field.style.position) {
-                        field.style.position = 'absolute';
-                    }
-
-                    // Setup editor functionality
-                    this.setupFieldEvents(field);
-
-                    if (field.classList.contains('rectangle')) {
-                        this.addResizeHandles(field);
-                    }
-                    else if (field.classList.contains('hline') || field.classList.contains('vline')) {
-                        const startPoint = document.createElement('div');
-                        startPoint.className = 'line-endpoint start-point';
-                        startPoint.style.display = 'none';
-
-                        const endPoint = document.createElement('div');
-                        endPoint.className = 'line-endpoint end-point';
-                        endPoint.style.display = 'none';
-
-                        field.appendChild(startPoint);
-                        field.appendChild(endPoint);
-                    }
-                });
-
-                // Update canvas size
-                const style = window.getComputedStyle(importedWrapper);
-                const widthInInches = parseFloat(style.width) / 96;
-                const heightInInches = parseFloat(style.height) / 96;
-
-                document.getElementById('canvasWidth').value = widthInInches.toFixed(2);
-                document.getElementById('canvasHeight').value = heightInInches.toFixed(2);
-                this.updateCanvasSize();
-
-                this.selectField(null);
-                this.updateFieldList();
-                this.saveState();
-                this.updateStatus("Template imported successfully");
-                this.resetUnsavedChanges();
-            };
-
-            reader.readAsText(file);
+            this.renderElement(element);
+            this.showPropertiesPanel(element);
+            this.saveToLocalStorage();
         }
+    }
 
-        findMatchingStyleRule(element, styleRules) {
-            const classList = Array.from(element.classList);
-            for (const cls of classList) {
-                if (styleRules[cls]) {
-                    return styleRules[cls];
-                }
+    updateTableHeaders(elementId, headersText) {
+        const element = this.getElementById(elementId);
+        if (element && element.type === 'table') {
+            element.properties.headers = headersText.split(',').map(h => h.trim());
+            this.renderElement(element);
+            this.saveToLocalStorage();
+        }
+    }
+
+    // Paper size handling
+    handlePaperSizeChange(e) {
+        const size = e.target.value;
+        const customInputs = document.getElementById('customSizeInputs');
+
+        if (size === 'custom') {
+            customInputs.style.display = 'flex';
+        } else {
+            customInputs.style.display = 'none';
+            this.applyPaperSize(size);
+        }
+    }
+
+    applyPaperSize(size) {
+        const paperSizes = {
+            'a4': { width: '210mm', height: '297mm' },
+            'letter': { width: '216mm', height: '279mm' },
+            'legal': { width: '216mm', height: '356mm' }
+        };
+
+        const sizeConfig = paperSizes[size];
+        if (sizeConfig) {
+            this.canvas.className = 'design-canvas';
+            this.canvas.classList.add(`${size}-paper`);
+            this.canvas.style.width = sizeConfig.width;
+            this.canvas.style.height = sizeConfig.height;
+            this.canvas.style.minHeight = sizeConfig.height;
+        }
+    }
+
+    applyCustomSize() {
+        const width = document.getElementById('customWidth').value;
+        const height = document.getElementById('customHeight').value;
+
+        this.canvas.className = 'design-canvas';
+        this.canvas.style.width = `${width}mm`;
+        this.canvas.style.height = `${height}mm`;
+        this.canvas.style.minHeight = `${height}mm`;
+    }
+
+    // Zoom controls
+    adjustZoom(delta) {
+        this.zoom = Math.max(0.5, Math.min(2, this.zoom + delta));
+        this.canvas.style.transform = `scale(${this.zoom})`;
+        document.getElementById('zoomLevel').textContent = `${Math.round(this.zoom * 100)}%`;
+    }
+
+    toggleGrid() {
+        this.showGrid = !this.showGrid;
+        this.updateGridVisibility();
+        this.saveToLocalStorage();
+    }
+
+    toggleSnapToGrid() {
+        this.snapToGrid = !this.snapToGrid;
+        this.updateGridVisibility();
+        this.saveToLocalStorage();
+    }
+
+    // Context menu
+    showContextMenu(e) {
+        e.preventDefault();
+        this.hideContextMenu();
+
+        const contextMenu = document.createElement('div');
+        contextMenu.className = 'context-menu';
+        contextMenu.style.left = `${e.clientX}px`;
+        contextMenu.style.top = `${e.clientY}px`;
+
+        contextMenu.innerHTML = `
+            <div class="context-menu-item" onclick="designer.deleteSelectedElement()">
+                <i class="fas fa-trash"></i> Delete
+            </div>
+            <div class="context-menu-item" onclick="designer.duplicateSelectedElement()">
+                <i class="fas fa-copy"></i> Duplicate
+            </div>
+            <div class="context-menu-item" onclick="designer.bringToFront()">
+                <i class="fas fa-arrow-up"></i> Bring to Front
+            </div>
+            <div class="context-menu-item" onclick="designer.sendToBack()">
+                <i class="fas fa-arrow-down"></i> Send to Back
+            </div>
+        `;
+
+        document.body.appendChild(contextMenu);
+    }
+
+    hideContextMenu() {
+        const existingMenu = document.querySelector('.context-menu');
+        if (existingMenu) {
+            existingMenu.remove();
+        }
+    }
+
+    deleteSelectedElement() {
+        if (this.selectedElement) {
+            this.elements = this.elements.filter(el => el.id !== this.selectedElement.id);
+            const elementDiv = document.getElementById(this.selectedElement.id);
+            if (elementDiv) {
+                elementDiv.remove();
             }
-            return null;
+            this.deselectAll();
+            this.saveToLocalStorage();
+        }
+        this.hideContextMenu();
+    }
+
+    duplicateSelectedElement() {
+        if (this.selectedElement) {
+            const original = this.selectedElement;
+            const duplicate = {
+                ...JSON.parse(JSON.stringify(original)),
+                id: `element-${this.nextId++}`,
+                x: original.x + 20,
+                y: original.y + 20
+            };
+            this.elements.push(duplicate);
+            this.renderElement(duplicate);
+            this.selectElement(duplicate);
+            this.saveToLocalStorage();
+        }
+        this.hideContextMenu();
+    }
+
+    bringToFront() {
+        if (this.selectedElement) {
+            const elementDiv = document.getElementById(this.selectedElement.id);
+            if (elementDiv) {
+                elementDiv.style.zIndex = '1000';
+            }
+        }
+        this.hideContextMenu();
+    }
+
+    sendToBack() {
+        if (this.selectedElement) {
+            const elementDiv = document.getElementById(this.selectedElement.id);
+            if (elementDiv) {
+                elementDiv.style.zIndex = '0';
+            }
+        }
+        this.hideContextMenu();
+    }
+
+    moveSelectedElementWithArrowKeys(e) {
+        if (!this.selectedElement) return;
+
+        const element = this.selectedElement;
+        const elementDiv = document.getElementById(element.id);
+
+        // Add moving class for visual feedback
+        if (elementDiv) {
+            elementDiv.classList.add('moving');
+            setTimeout(() => {
+                elementDiv.classList.remove('moving');
+            }, 150);
         }
 
-        // Helper method to apply styles from rule
-        applyStylesFromRule(element, rule) {
-            const declarations = rule.split(';');
-            declarations.forEach(declaration => {
-                const [prop, value] = declaration.split(':').map(p => p.trim());
-                if (prop && value) {
-                    const jsProp = prop.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
-                    element.style[jsProp] = value;
+        let moveAmount = 1; // Default move amount (1px or 1 grid unit)
+
+        // If shift is pressed, move by 10 units
+        if (e.shiftKey) {
+            moveAmount = 10;
+        }
+
+        // Apply snap to grid if enabled
+        if (this.snapToGrid) {
+            moveAmount = this.gridSize;
+            if (e.shiftKey) {
+                moveAmount = this.gridSize * 10; // 10 grid units when shift is pressed
+            }
+        }
+
+        let newX = element.x;
+        let newY = element.y;
+
+        switch (e.key) {
+            case 'ArrowUp':
+                newY = Math.max(0, element.y - moveAmount);
+                break;
+            case 'ArrowDown':
+                newY = Math.min(
+                    this.canvas.offsetHeight - element.height,
+                    element.y + moveAmount
+                );
+                break;
+            case 'ArrowLeft':
+                newX = Math.max(0, element.x - moveAmount);
+                break;
+            case 'ArrowRight':
+                newX = Math.min(
+                    this.canvas.offsetWidth - element.width,
+                    element.x + moveAmount
+                );
+                break;
+        }
+
+        // Only update if position changed
+        if (newX !== element.x || newY !== element.y) {
+            this.updateElementPosition(element.id, newX, newY);
+            this.saveToLocalStorage();
+
+            // Update properties panel if open
+            this.showPropertiesPanel(element);
+        }
+    }
+
+    // Keyboard shortcuts
+    handleKeyboard(e) {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+        if (e.key === 'Delete' && this.selectedElement) {
+            this.deleteSelectedElement();
+        } else if (e.ctrlKey && e.key === 'd' && this.selectedElement) {
+            e.preventDefault();
+            this.duplicateSelectedElement();
+        } else if (e.ctrlKey && e.key === 's') {
+            e.preventDefault();
+            this.saveTemplate();
+        } else if (this.selectedElement && (e.key.startsWith('Arrow') || e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+            e.preventDefault();
+            this.moveSelectedElementWithArrowKeys(e);
+        }
+    }
+
+    // Save/Load functionality
+    saveToLocalStorage() {
+        const template = {
+            elements: this.elements,
+            nextId: this.nextId,
+            paperSize: document.getElementById('paperSize').value,
+            showGrid: this.showGrid, // Save but don't load
+            snapToGrid: this.snapToGrid // Save but don't load
+        };
+        localStorage.setItem('formDesignerTemplate', JSON.stringify(template));
+    }
+
+    loadFromLocalStorage() {
+        const saved = localStorage.getItem('formDesignerTemplate');
+        if (saved) {
+            try {
+                const template = JSON.parse(saved);
+                this.elements = template.elements || [];
+                this.nextId = template.nextId || 1;
+
+                if (template.paperSize) {
+                    document.getElementById('paperSize').value = template.paperSize;
+                    this.applyPaperSize(template.paperSize);
                 }
-            });
+
+                // Ignore any saved grid/snap settings
+                this.showGrid = false;
+                this.snapToGrid = false;
+
+                this.renderAllElements();
+            } catch (e) {
+                console.error('Error loading template:', e);
+            }
         }
-    }
-    function pxToPt(px) {
-        return Math.round(px * 72 / 96);
+        // Ensure grid visibility is updated
+        this.updateGridVisibility();
     }
 
-    // Initialize the designer
-    const designer = new TemplateDesigner();
+    renderAllElements() {
+        // Clear existing elements
+        document.querySelectorAll('.design-element').forEach(el => el.remove());
+
+        // Render all elements
+        this.elements.forEach(element => {
+            this.renderElement(element);
+        });
+    }
+
+    saveTemplate() {
+        this.saveToLocalStorage();
+        alert('Template saved successfully!');
+    }
+
+    clearCanvas() {
+        if (confirm('Are you sure you want to clear the canvas? This cannot be undone.')) {
+            this.elements = [];
+            this.nextId = 1;
+            this.deselectAll();
+            this.renderAllElements();
+            localStorage.removeItem('formDesignerTemplate');
+        }
+    }
+
+    // Export functionality
+    exportAsHTML() {
+        const htmlContent = this.generateHTML();
+        this.downloadFile(htmlContent, 'form-template.html', 'text/html');
+    }
+
+    printForm() {
+        const htmlContent = this.generateHTML();
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(htmlContent);
+        printWindow.document.close();
+
+        printWindow.onload = function () {
+            printWindow.focus();
+            printWindow.print();
+            printWindow.close();
+        };
+    }
+
+    generateHTML() {
+        const paperClass = this.canvas.className.includes('a4-paper') ? 'a4-paper' :
+            this.canvas.className.includes('letter-paper') ? 'letter-paper' : 'legal-paper';
+
+        let elementsHTML = '';
+        this.elements.forEach(element => {
+            elementsHTML += this.generateElementHTML(element);
+        });
+
+        return `<!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <meta name="pdfkit-page_size" content="${paperClass === 'a4-paper' ? 'A4' : paperClass === 'legal-paper' ? 'Legal' : 'Letter'}"/>
+                <meta name="pdfkit-orientation" content="Portrait"/>
+                <title>Form Template</title>
+                <style>
+                    @page {
+                        margin: 0;
+                    }
+                    * { 
+                        box-sizing: border-box; 
+                        margin: 0;
+                        padding: 0;
+                    }
+                    body { 
+                        margin: 0; 
+                        padding: 0;
+                        font-family: Arial, sans-serif;
+                    }
+                    .form-container { 
+                        background: white; 
+                        position: relative;
+                        margin: 0 auto;
+                        page-break-after: avoid;
+                        page-break-inside: avoid;
+                        border: 1px solid #ddd;
+                    }
+                    .a4-paper { 
+                        width: 210mm; 
+                        height: 297mm; 
+                        min-height: 297mm; 
+                    }
+                    .letter-paper { 
+                        width: 216mm; 
+                        height: 279mm; 
+                        min-height: 279mm; 
+                    }
+                    .legal-paper { 
+                        width: 216mm; 
+                        height: 356mm; 
+                        min-height: 356mm; 
+                    }
+                    ${this.generateElementCSS()}
+                </style>
+            </head>
+            <body>
+                <div class="form-container ${paperClass}">
+                    ${elementsHTML}
+                </div>
+            </body>
+            </html>`;
+    }
+
+    generateElementHTML(element) {
+        const { type, x, y, width, height, properties } = element;
+        // Use custom ID if set, otherwise fall back to internal ID
+        const elementId = properties.elementId || element.id;
+        const idAttr = ` id="${elementId}"`;
+
+        switch (type) {
+            case 'text-field':
+                return `<div${idAttr} class="text-field-element" style="position: absolute; left: ${x}px; top: ${y}px; width: ${width}px; height: ${height}px; font-size: ${properties.fontSize}pt; color: ${properties.color}; text-align: ${properties.textAlign}; font-weight: ${properties.fontWeight}; padding: 4px 8px; line-height: ${Math.max(height - 8, 12)}px; overflow: hidden;">${properties.text || 'Text Field'}</div>`;
+
+            case 'rectangle':
+                return `<div${idAttr} class="rectangle-element" style="position: absolute; left: ${x}px; top: ${y}px; width: ${width}px; height: ${height}px; background: ${properties.fillColor}; border: ${properties.borderWidth}px solid ${properties.borderColor};"></div>`;
+
+            case 'vline':
+                return `<div${idAttr} class="vline-element" style="position: absolute; left: ${x}px; top: ${y}px; width: ${properties.thickness}px; height: ${height}px; border-left: ${properties.thickness}px solid ${properties.color}; background: transparent;"></div>`;
+
+            case 'hline':
+                return `<div${idAttr} class="hline-element" style="position: absolute; left: ${x}px; top: ${y}px; width: ${width}px; height: ${properties.thickness}px; border-top: ${properties.thickness}px solid ${properties.color}; background: transparent;"></div>`;
+
+            case 'table':
+                const fontSize = properties.fontSize || 12;
+                let tableHTML = `<div${idAttr} class="table-element" style="position: absolute; left: ${x}px; top: ${y}px; width: ${width}px;">`;
+
+                // Header row
+                tableHTML += '<div class="table-row table-header">';
+                properties.headers.forEach((header, index) => {
+                    const isLastCell = index === properties.columns - 1;
+                    tableHTML += `<div class="table-cell" style="width: ${properties.columnWidths[index]}%; font-size: ${fontSize}pt; float: left; box-sizing: border-box; border-right: ${isLastCell ? 'none' : '1px solid #34495e'};">${header}</div>`;
+                });
+                tableHTML += '<div style="clear: both;"></div></div>';
+
+                // Data rows
+                for (let i = 1; i < properties.rows; i++) {
+                    const isLastRow = i === properties.rows - 1;
+                    tableHTML += `<div class="table-row" style="border-bottom: ${isLastRow ? 'none' : '1px solid #34495e'};">`;
+                    for (let j = 0; j < properties.columns; j++) {
+                        const isLastCell = j === properties.columns - 1;
+                        tableHTML += `<div class="table-cell" style="width: ${properties.columnWidths[j]}%; font-size: ${fontSize}pt; float: left; box-sizing: border-box; border-right: ${isLastCell ? 'none' : '1px solid #34495e'};">&nbsp;</div>`;
+                    }
+                    tableHTML += '<div style="clear: both;"></div></div>';
+                }
+                tableHTML += '</div>';
+                return tableHTML;
+
+            case 'label':
+                return `<div${idAttr} class="label-element" style="position: absolute; left: ${x}px; top: ${y}px; width: ${width}px; height: ${height}px; font-size: ${properties.fontSize}pt; color: ${properties.color}; text-align: ${properties.textAlign}; font-weight: ${properties.fontWeight}; padding: 4px 8px; line-height: ${Math.max(height - 8, 12)}px; overflow: hidden;">${properties.text}</div>`;
+
+            case 'checkbox':
+                return `<div${idAttr} class="checkbox-element" style="position: absolute; left: ${x}px; top: ${y}px; width: ${width}px; height: ${height}px; overflow: hidden;">
+                <input type="checkbox" style="float: left; margin-right: 8px; margin-top: 2px; width: 16px; height: 16px;">
+                <span class="checkbox-label" style="display: inline-block; font-size: 14pt; color: #2c3e50;">${properties.text}</span>
+                <div style="clear: both;"></div>
+            </div>`;
+
+            case 'signature':
+                const paddingTop = Math.max(10, Math.floor(height / 3));
+                return `<div${idAttr} class="signature-element" style="position: absolute; left: ${x}px; top: ${y}px; width: ${width}px; height: ${height}px; border: 1px dashed ${properties.borderColor}; color: ${properties.color}; text-align: center; padding-top: ${paddingTop}px; font-style: italic;">${properties.text}</div>`;
+
+            default:
+                return '';
+        }
+    }
+
+    generateElementCSS() {
+        return `
+        .text-field-element { 
+            background: transparent;
+            overflow: hidden;
+        }
+        .rectangle-element { 
+            background: transparent; 
+        }
+        .vline-element { 
+            background: transparent; 
+        }
+        .hline-element { 
+            background: transparent; 
+        }
+        
+        /* Table Styles - Rotativa Compatible (No Flexbox) */
+        .table-element { 
+            border: 1px solid #34495e !important; 
+            background: white !important;
+            border-collapse: collapse;
+            overflow: hidden;
+        }
+        .table-row { 
+            border-bottom: 1px solid #34495e !important;
+            min-height: 10px !important;
+            display: block;
+            width: 100%;
+            overflow: hidden;
+        }
+        .table-row:after {
+            content: "";
+            display: table;
+            clear: both;
+        }
+        .table-row:last-child { 
+            border-bottom: none !important; 
+        }
+        .table-cell {
+            padding: 8px;
+            border-right: 1px solid #34495e;
+            min-height: 20px;
+            position: relative;
+            line-height: 1.2;
+            vertical-align: top;
+            float: left;
+            box-sizing: border-box;
+        }
+        .table-cell:last-child {
+            border-right: none;
+        }
+        .table-header {
+            color: #2c3e50;
+            font-weight: bold;
+            min-height: 10px;
+        }
+        
+        /* Checkbox styles - No Flexbox */
+        .checkbox-element { 
+            display: block !important;
+            overflow: hidden;
+        }
+        .checkbox-element input[type="checkbox"] {
+            float: left;
+            margin-right: 8px;
+            margin-top: 2px;
+            width: 16px;
+            height: 16px;
+        }
+        .checkbox-label { 
+            font-size: 14pt !important; 
+            color: #2c3e50 !important;
+            display: inline-block;
+            line-height: 1.4;
+        }
+        
+        /* Signature styles - No Flexbox */
+        .signature-element { 
+            text-align: center !important;
+            font-style: italic !important;
+            overflow: hidden;
+        }
+        
+        /* Label styles */
+        .label-element {
+            background: transparent;
+            overflow: hidden;
+        }
+        
+        /* Print specific styles */
+        @media print {
+            body {
+                background: white !important;
+            }
+            .form-container {
+                box-shadow: none !important;
+                page-break-inside: avoid;
+            }
+            .vline-element {
+                background: transparent !important;
+            }
+            .hline-element {
+                background: transparent !important;
+            }
+        }
+    `;
+    }
+
+    importTemplate(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const content = event.target.result;
+
+                if (file.name.endsWith('.html')) {
+                    this.importFromHTML(content);
+                } else if (file.name.endsWith('.json')) {
+                    const template = JSON.parse(content);
+                    this.elements = template.elements || [];
+                    this.nextId = template.nextId || 1;
+                    this.renderAllElements();
+                    this.saveToLocalStorage();
+                    alert('Template imported successfully!');
+                }
+            } catch (error) {
+                console.error('Error importing template:', error);
+                alert('Error importing template. Please check the file format.');
+            }
+        };
+        reader.readAsText(file);
+
+        // Reset file input
+        e.target.value = '';
+    }
+
+    importFromHTML(htmlContent) {
+        // Simple HTML import - in a real application, you'd want more robust parsing
+        alert('HTML import would need custom implementation based on your exported structure');
+    }
+
+    downloadFile(content, filename, mimeType) {
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+}
+
+// Initialize the designer when the page loads
+let designer;
+document.addEventListener('DOMContentLoaded', () => {
+    designer = new FormDesigner();
 });
