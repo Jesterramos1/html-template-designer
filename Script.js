@@ -16,10 +16,17 @@ class FormDesigner {
         this.resizingColumnIndex = null;
         this.isMarqueeSelecting = false;
         this.marqueeStart = { x: 0, y: 0 };
+        this.undoStack = [];
+        this.redoStack = [];
+        this.maxHistorySteps = 50; // Limit history size
 
         this.initializeElements();
         this.setupEventListeners();
         this.loadFromLocalStorage();
+
+        setTimeout(() => {
+            this.captureState('Initial State');
+        }, 100);
     }
 
     initializeElements() {
@@ -118,6 +125,7 @@ class FormDesigner {
     }
 
     addElement(type, x, y) {
+        this.captureState(`Add ${type}`);
         const id = `element-${this.nextId++}`;
         const element = {
             id,
@@ -527,6 +535,10 @@ class FormDesigner {
             this.isDragging = false;
             document.removeEventListener('mousemove', mouseMoveHandler);
             document.removeEventListener('mouseup', mouseUpHandler);
+
+            if (this.selectedElements.length > 0) {
+                this.captureState(`Move ${this.selectedElements.length} element(s)`);
+            }
             this.saveToLocalStorage();
         };
 
@@ -603,6 +615,10 @@ class FormDesigner {
             this.currentResizeHandle = null;
             document.removeEventListener('mousemove', mouseMoveHandler);
             document.removeEventListener('mouseup', mouseUpHandler);
+
+            if (this.selectedElements.length > 0) {
+                this.captureState(`Resize ${this.selectedElements.length} element(s)`);
+            }
             this.saveToLocalStorage();
         };
 
@@ -657,6 +673,10 @@ class FormDesigner {
             this.resizingColumnIndex = null;
             document.removeEventListener('mousemove', mouseMoveHandler);
             document.removeEventListener('mouseup', mouseUpHandler);
+
+            if (this.selectedElements.length > 0) {
+                this.captureState(`ResizeColumn ${this.selectedElements.length} element(s)`);
+            }
             this.saveToLocalStorage();
         };
 
@@ -1534,6 +1554,7 @@ class FormDesigner {
 
     deleteSelectedElements() {
         if (this.selectedElements.length > 0) {
+            this.captureState(`Delete ${this.selectedElements.length} element(s)`);
             const idsToDelete = this.selectedElements.map(el => el.id);
 
             idsToDelete.forEach(id => {
@@ -1680,6 +1701,12 @@ class FormDesigner {
         } else if ((e.ctrlKey || e.metaKey) && e.key === 's') {
             e.preventDefault();
             this.saveTemplate();
+        } else if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+            e.preventDefault();
+            this.undo();
+        } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+            e.preventDefault();
+            this.redo();
         } else if (this.selectedElements.length > 0 && (e.key.startsWith('Arrow') || e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
             e.preventDefault();
             this.moveSelectedElementWithArrowKeys(e);
@@ -2004,6 +2031,128 @@ class FormDesigner {
             }
         }
     `;
+    }
+
+    // Capture current state for undo/redo
+    captureState(actionName = 'Action') {
+        const state = {
+            elements: JSON.parse(JSON.stringify(this.elements)),
+            nextId: this.nextId,
+            selectedElements: this.selectedElements.map(el => el.id),
+            action: actionName,
+            timestamp: Date.now()
+        };
+
+        this.undoStack.push(state);
+
+        // Limit stack size
+        if (this.undoStack.length > this.maxHistorySteps) {
+            this.undoStack.shift();
+        }
+
+        // Clear redo stack when new action is performed
+        this.redoStack = [];
+
+        console.log(`State captured: ${actionName} (${this.undoStack.length} in stack)`);
+    }
+
+    // Restore state from snapshot
+    restoreState(state) {
+        this.elements = state.elements;
+        this.nextId = state.nextId;
+
+        // Restore selection
+        this.deselectAll();
+        state.selectedElements.forEach(id => {
+            const element = this.getElementById(id);
+            if (element) {
+                this.addToSelection(element);
+            }
+        });
+
+        this.renderAllElements();
+        this.showPropertiesPanel(this.selectedElements.length === 1 ? this.selectedElements[0] : null);
+    }
+
+    // Undo last action
+    undo() {
+        if (this.undoStack.length === 0) {
+            console.log('Nothing to undo');
+            return;
+        }
+
+        const currentState = {
+            elements: JSON.parse(JSON.stringify(this.elements)),
+            nextId: this.nextId,
+            selectedElements: this.selectedElements.map(el => el.id),
+            action: 'Current',
+            timestamp: Date.now()
+        };
+
+        const previousState = this.undoStack.pop();
+        this.redoStack.push(currentState);
+
+        this.restoreState(previousState);
+        this.saveToLocalStorage();
+
+        console.log(`Undo: ${previousState.action}`);
+        this.showNotification(`Undo: ${previousState.action}`);
+    }
+
+    // Redo last undone action
+    redo() {
+        if (this.redoStack.length === 0) {
+            console.log('Nothing to redo');
+            return;
+        }
+
+        const currentState = {
+            elements: JSON.parse(JSON.stringify(this.elements)),
+            nextId: this.nextId,
+            selectedElements: this.selectedElements.map(el => el.id),
+            action: 'Current',
+            timestamp: Date.now()
+        };
+
+        const nextState = this.redoStack.pop();
+        this.undoStack.push(currentState);
+
+        this.restoreState(nextState);
+        this.saveToLocalStorage();
+
+        console.log(`Redo: ${nextState.action}`);
+        this.showNotification(`Redo: ${nextState.action}`);
+    }
+
+    showNotification(message) {
+        // Create or update notification element
+        let notification = document.getElementById('undoRedoNotification');
+        if (!notification) {
+            notification = document.createElement('div');
+            notification.id = 'undoRedoNotification';
+            notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #2c3e50;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 4px;
+            z-index: 10000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 14px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        `;
+            document.body.appendChild(notification);
+        }
+
+        notification.textContent = message;
+        notification.style.opacity = '1';
+
+        setTimeout(() => {
+            notification.style.opacity = '0';
+        }, 2000);
     }
 
     importTemplate(e) {
