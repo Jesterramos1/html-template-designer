@@ -137,6 +137,14 @@ class FormDesigner {
             properties: this.getDefaultProperties(type)
         };
 
+        // Ensure checkbox has reasonable dimensions even if 'auto'
+        if (type === 'checkbox' && element.width === 'auto') {
+            element.width = 120; // Reasonable default width
+        }
+        if (type === 'checkbox' && element.height === 'auto') {
+            element.height = 24; // Reasonable default height
+        }
+
         this.elements.push(element);
         this.renderElement(element);
         this.selectElement(element);
@@ -151,7 +159,7 @@ class FormDesigner {
             'hline': 200,
             'table': 300,
             'label': 120,
-            'checkbox': 150,
+            'checkbox': 120,
             'signature': 200
         };
         return defaults[type] || 100;
@@ -232,7 +240,11 @@ class FormDesigner {
             'checkbox': {
                 ...baseProps,
                 label: 'Checkbox',
-                text: 'Check me'
+                text: 'Check me',
+                checkboxSize: 12,
+                labelPosition: 'right',  // 'left' or 'right'
+                fontSize: 10,
+                labelGap: 8
             },
             'signature': {
                 ...baseProps,
@@ -352,11 +364,22 @@ class FormDesigner {
                 break;
 
             case 'checkbox':
-                elementDiv.innerHTML = `
-                    <input type="checkbox" style="float: left; margin-right: 8px; margin-top: 2px; width: 16px; height: 16px;">
-                    <span class="checkbox-label" style="display: inline-block; font-size: 14pt; color: #2c3e50;">${properties.text || 'Checkbox'}</span>
-                    <div style="clear: both;"></div>
-                `;
+                const checkboxSize = properties.checkboxSize || 16;
+                const labelGap = properties.labelGap || 8;
+                const labelPosition = properties.labelPosition || 'right';
+                const checkfontSize = properties.fontSize || 14;
+
+                if (labelPosition === 'right') {
+                    elementDiv.innerHTML = `
+                        <input type="checkbox" style="display: inline-block; vertical-align: middle; margin: 0 ${labelGap}px 0 0; width: ${checkboxSize}px; height: ${checkboxSize}px;">
+                        <span class="checkbox-label" style="display: inline-block; vertical-align: middle; font-size: ${checkfontSize}pt; color: #2c3e50;">${properties.text || 'Checkbox'}</span>
+                    `;
+                } else {
+                    elementDiv.innerHTML = `
+                        <span class="checkbox-label" style="display: inline-block; vertical-align: middle; font-size: ${checkfontSize}pt; color: #2c3e50; margin: 0 ${labelGap}px 0 0;">${properties.text || 'Checkbox'}</span>
+                        <input type="checkbox" style="display: inline-block; vertical-align: middle; margin: 0; width: ${checkboxSize}px; height: ${checkboxSize}px;">
+                    `;
+                }
                 break;
 
             case 'signature':
@@ -643,11 +666,9 @@ class FormDesigner {
                 }
 
                 // Boundary checking
-                const elDiv = document.getElementById(el.id);
-                if (elDiv) {
-                    newX = Math.max(0, Math.min(newX, this.canvas.offsetWidth - el.width));
-                    newY = Math.max(0, Math.min(newY, this.canvas.offsetHeight - el.height));
-                }
+                const bounds = this.getElementBounds(el);
+                newX = Math.max(0, Math.min(newX, this.canvas.offsetWidth - bounds.width));
+                newY = Math.max(0, Math.min(newY, this.canvas.offsetHeight - bounds.height));
 
                 this.updateElementPosition(el.id, newX, newY);
             });
@@ -953,9 +974,11 @@ class FormDesigner {
             const elementDiv = document.getElementById(element.id);
             if (!elementDiv) return;
 
+            const bounds = this.getElementBounds(element);
+
             const intersects = this.rectanglesIntersect(
                 left, top, width, height,
-                element.x, element.y, element.width, element.height
+                bounds.x, bounds.y, bounds.width, bounds.height
             );
 
             if (intersects) {
@@ -971,11 +994,13 @@ class FormDesigner {
         this.deselectAll();
 
         this.elements.forEach(element => {
+            const bounds = this.getElementBounds(element);
+
             const elementRect = {
-                left: element.x,
-                top: element.y,
-                right: element.x + element.width,
-                bottom: element.y + element.height
+                left: bounds.x,
+                top: bounds.y,
+                right: bounds.x + bounds.width,
+                bottom: bounds.y + bounds.height
             };
 
             const marqueeRect = {
@@ -1003,7 +1028,31 @@ class FormDesigner {
 
         this.showPropertiesPanel(this.selectedElements.length === 1 ? this.selectedElements[0] : null);
     }
+    
+    getElementBounds(element) {
+        if (element.type === 'checkbox') {
+            // For checkboxes, calculate actual rendered size
+            const elementDiv = document.getElementById(element.id);
+            if (elementDiv) {
+                const rect = elementDiv.getBoundingClientRect();
+                const canvasRect = this.canvas.getBoundingClientRect();
 
+                return {
+                    x: element.x, // Always use the stored x,y for position
+                    y: element.y,
+                    width: (rect.width / this.zoom) || element.width || 100, // Fallback values
+                    height: (rect.height / this.zoom) || element.height || 30
+                };
+            }
+        }
+        // For other elements, use stored dimensions
+        return {
+            x: element.x,
+            y: element.y,
+            width: element.width || 100, // Add fallbacks
+            height: element.height || 30
+        };
+    }
 
     rectanglesIntersect(x1, y1, w1, h1, x2, y2, w2, h2) {
         return x1 < x2 + w2 &&
@@ -1133,17 +1182,17 @@ class FormDesigner {
                 </div>
             `;
 
-        if (element.type !== 'table') {
+        if (element.type !== 'table' && element.type !== 'checkbox') {
             propertiesHTML += `
-            <div class="form-group">
-                <label>Width</label>
-                <input type="number" value="${element.width}" onchange="designer.updateElementProperty('${element.id}', 'width', this.value)">
-            </div>
-            <div class="form-group">
-                <label>Height</label>
-                <input type="number" value="${element.height}" onchange="designer.updateElementProperty('${element.id}', 'height', this.value)">
-            </div>
-        `;
+                <div class="form-group">
+                    <label>Width</label>
+                    <input type="number" value="${element.width}" onchange="designer.updateElementProperty('${element.id}', 'width', this.value)">
+                </div>
+                <div class="form-group">
+                    <label>Height</label>
+                    <input type="number" value="${element.height}" onchange="designer.updateElementProperty('${element.id}', 'height', this.value)">
+                </div>
+            `;
         }
 
         propertiesHTML += `</div>`;
@@ -1265,16 +1314,22 @@ class FormDesigner {
                 });
                 break;
             case 'right':
-                const maxRight = Math.max(...this.selectedElements.map(el => el.x + el.width));
-                this.selectedElements.forEach(el => {
-                    el.x = maxRight - el.width;
-                    this.renderElement(el);
+                // Use bounds for right alignment to account for element width
+                const elementsWithBounds = this.selectedElements.map(el => ({
+                    element: el,
+                    bounds: this.getElementBounds(el)
+                }));
+                const maxRight = Math.max(...elementsWithBounds.map(({ element, bounds }) => element.x + bounds.width));
+                elementsWithBounds.forEach(({ element, bounds }) => {
+                    element.x = maxRight - bounds.width;
+                    this.renderElement(element);
                 });
                 break;
             case 'center':
-                const avgX = this.selectedElements.reduce((sum, el) => sum + el.x + el.width / 2, 0) / this.selectedElements.length;
+                const avgX = this.selectedElements.reduce((sum, el) => sum + el.x + (this.getElementBounds(el).width / 2), 0) / this.selectedElements.length;
                 this.selectedElements.forEach(el => {
-                    el.x = avgX - el.width / 2;
+                    const bounds = this.getElementBounds(el);
+                    el.x = avgX - (bounds.width / 2);
                     this.renderElement(el);
                 });
                 break;
@@ -1286,10 +1341,15 @@ class FormDesigner {
                 });
                 break;
             case 'bottom':
-                const maxBottom = Math.max(...this.selectedElements.map(el => el.y + el.height));
-                this.selectedElements.forEach(el => {
-                    el.y = maxBottom - el.height;
-                    this.renderElement(el);
+                // Use bounds for bottom alignment to account for element height
+                const elementsWithBoundsBottom = this.selectedElements.map(el => ({
+                    element: el,
+                    bounds: this.getElementBounds(el)
+                }));
+                const maxBottom = Math.max(...elementsWithBoundsBottom.map(({ element, bounds }) => element.y + bounds.height));
+                elementsWithBoundsBottom.forEach(({ element, bounds }) => {
+                    element.y = maxBottom - bounds.height;
+                    this.renderElement(element);
                 });
                 break;
         }
@@ -1300,33 +1360,38 @@ class FormDesigner {
     distributeSelected(direction) {
         if (this.selectedElements.length < 3) return;
 
-        const sorted = [...this.selectedElements].sort((a, b) => {
-            return direction === 'horizontal' ? a.x - b.x : a.y - b.y;
+        const elementsWithBounds = this.selectedElements.map(el => ({
+            element: el,
+            bounds: this.getElementBounds(el)
+        }));
+
+        const sorted = [...elementsWithBounds].sort((a, b) => {
+            return direction === 'horizontal' ? a.element.x - b.element.x : a.element.y - b.element.y;
         });
 
         if (direction === 'horizontal') {
-            const start = sorted[0].x;
-            const end = sorted[sorted.length - 1].x + sorted[sorted.length - 1].width;
-            const totalWidth = sorted.reduce((sum, el) => sum + el.width, 0);
+            const start = sorted[0].element.x;
+            const end = sorted[sorted.length - 1].element.x + sorted[sorted.length - 1].bounds.width;
+            const totalWidth = sorted.reduce((sum, item) => sum + item.bounds.width, 0);
             const gap = (end - start - totalWidth) / (sorted.length - 1);
 
             let currentX = start;
-            sorted.forEach(el => {
-                el.x = currentX;
-                currentX += el.width + gap;
-                this.renderElement(el);
+            sorted.forEach(item => {
+                item.element.x = currentX;
+                currentX += item.bounds.width + gap;
+                this.renderElement(item.element);
             });
         } else {
-            const start = sorted[0].y;
-            const end = sorted[sorted.length - 1].y + sorted[sorted.length - 1].height;
-            const totalHeight = sorted.reduce((sum, el) => sum + el.height, 0);
+            const start = sorted[0].element.y;
+            const end = sorted[sorted.length - 1].element.y + sorted[sorted.length - 1].bounds.height;
+            const totalHeight = sorted.reduce((sum, item) => sum + item.bounds.height, 0);
             const gap = (end - start - totalHeight) / (sorted.length - 1);
 
             let currentY = start;
-            sorted.forEach(el => {
-                el.y = currentY;
-                currentY += el.height + gap;
-                this.renderElement(el);
+            sorted.forEach(item => {
+                item.element.y = currentY;
+                currentY += item.bounds.height + gap;
+                this.renderElement(item.element);
             });
         }
 
@@ -1337,37 +1402,37 @@ class FormDesigner {
         const { type, properties } = element;
 
         const commonTextProperties = `
-        <div class="form-group">
-            <label>Text Content</label>
-            <input type="text" value="${properties.text}" onchange="designer.updateElementProperty('${element.id}', 'text', this.value)">
-        </div>
-        <div class="form-group">
-            <label>Font Size (pt)</label>
-            <input type="number" value="${properties.fontSize}" onchange="designer.updateElementProperty('${element.id}', 'fontSize', this.value)">
-        </div>
-        <div class="form-group">
-            <label>Text Color</label>
-            <div class="color-input">
-                <input type="color" value="${properties.color}" onchange="designer.updateElementProperty('${element.id}', 'color', this.value)">
-                <input type="text" value="${properties.color}" onchange="designer.updateElementProperty('${element.id}', 'color', this.value)">
+            <div class="form-group">
+                <label>Text Content</label>
+                <input type="text" value="${properties.text}" onchange="designer.updateElementProperty('${element.id}', 'text', this.value)">
             </div>
-        </div>
-        <div class="form-group">
-            <label>Text Align</label>
-            <select onchange="designer.updateElementProperty('${element.id}', 'textAlign', this.value)">
-                <option value="left" ${properties.textAlign === 'left' ? 'selected' : ''}>Left</option>
-                <option value="center" ${properties.textAlign === 'center' ? 'selected' : ''}>Center</option>
-                <option value="right" ${properties.textAlign === 'right' ? 'selected' : ''}>Right</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Font Weight</label>
-            <select onchange="designer.updateElementProperty('${element.id}', 'fontWeight', this.value)">
-                <option value="normal" ${properties.fontWeight === 'normal' ? 'selected' : ''}>Normal</option>
-                <option value="bold" ${properties.fontWeight === 'bold' ? 'selected' : ''}>Bold</option>
-            </select>
-        </div>
-    `;
+            <div class="form-group">
+                <label>Font Size (pt)</label>
+                <input type="number" value="${properties.fontSize}" onchange="designer.updateElementProperty('${element.id}', 'fontSize', this.value)">
+            </div>
+            <div class="form-group">
+                <label>Text Color</label>
+                <div class="color-input">
+                    <input type="color" value="${properties.color}" onchange="designer.updateElementProperty('${element.id}', 'color', this.value)">
+                    <input type="text" value="${properties.color}" onchange="designer.updateElementProperty('${element.id}', 'color', this.value)">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Text Align</label>
+                <select onchange="designer.updateElementProperty('${element.id}', 'textAlign', this.value)">
+                    <option value="left" ${properties.textAlign === 'left' ? 'selected' : ''}>Left</option>
+                    <option value="center" ${properties.textAlign === 'center' ? 'selected' : ''}>Center</option>
+                    <option value="right" ${properties.textAlign === 'right' ? 'selected' : ''}>Right</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Font Weight</label>
+                <select onchange="designer.updateElementProperty('${element.id}', 'fontWeight', this.value)">
+                    <option value="normal" ${properties.fontWeight === 'normal' ? 'selected' : ''}>Normal</option>
+                    <option value="bold" ${properties.fontWeight === 'bold' ? 'selected' : ''}>Bold</option>
+                </select>
+            </div>
+        `;
 
         switch (type) {
             case 'text-field':
@@ -1512,7 +1577,32 @@ class FormDesigner {
                         <h4>Checkbox</h4>
                         <div class="form-group">
                             <label>Label Text</label>
-                            <input type="text" value="${properties.text}" onchange="designer.updateElementProperty('${element.id}', 'text', this.value)">
+                            <input type="text" value="${properties.text || 'Checkbox'}" onchange="designer.updateElementProperty('${element.id}', 'text', this.value)">
+                        </div>
+                        <div class="form-group">
+                            <label>Font Size (pt)</label>
+                            <input type="number" value="${properties.fontSize || 14}" min="8" max="72" onchange="designer.updateElementProperty('${element.id}', 'fontSize', this.value)">
+                        </div>
+                        <div class="form-group">
+                            <label>Checkbox Size (px)</label>
+                            <input type="number" value="${properties.checkboxSize || 16}" min="12" max="32" onchange="designer.updateElementProperty('${element.id}', 'checkboxSize', this.value)">
+                        </div>
+                        <div class="form-group">
+                            <label>Label Position</label>
+                            <div style="display: flex; gap: 15px; margin-top: 8px;">
+                                <label style="display: flex; align-items: center; gap: 5px; text-transform: none; font-weight: normal;">
+                                    <input type="radio" name="labelPosition_${element.id}" value="left" ${(properties.labelPosition || 'right') === 'left' ? 'checked' : ''} onchange="designer.updateElementProperty('${element.id}', 'labelPosition', this.value)">
+                                    Left
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 5px; text-transform: none; font-weight: normal;">
+                                    <input type="radio" name="labelPosition_${element.id}" value="right" ${(properties.labelPosition || 'right') === 'right' ? 'checked' : ''} onchange="designer.updateElementProperty('${element.id}', 'labelPosition', this.value)">
+                                    Right
+                                </label>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Spacing Gap (px)</label>
+                            <input type="number" value="${properties.labelGap || 8}" min="0" max="50" onchange="designer.updateElementProperty('${element.id}', 'labelGap', this.value)">
                         </div>
                     </div>
                 `;
@@ -1887,10 +1977,12 @@ class FormDesigner {
                 moveAmount = this.gridSize * 10;
             }
         }
-
+        
         this.selectedElements.forEach(element => {
             let newX = element.x;
             let newY = element.y;
+
+            const bounds = this.getElementBounds(element);
 
             switch (e.key) {
                 case 'ArrowUp':
@@ -1898,7 +1990,7 @@ class FormDesigner {
                     break;
                 case 'ArrowDown':
                     newY = Math.min(
-                        this.canvas.offsetHeight - element.height,
+                        this.canvas.offsetHeight - bounds.height,
                         element.y + moveAmount
                     );
                     break;
@@ -1907,7 +1999,7 @@ class FormDesigner {
                     break;
                 case 'ArrowRight':
                     newX = Math.min(
-                        this.canvas.offsetWidth - element.width,
+                        this.canvas.offsetWidth - bounds.width,
                         element.x + moveAmount
                     );
                     break;
@@ -2163,11 +2255,22 @@ class FormDesigner {
                 return `<div${idAttr} class="label-element" style="position: absolute; left: ${x}px; top: ${y}px; width: ${width}px; height: ${height}px; font-size: ${properties.fontSize}pt; color: ${properties.color}; text-align: ${properties.textAlign}; font-weight: ${properties.fontWeight}; padding: 4px 8px; line-height: ${Math.max(height - 8, 12)}px; overflow: hidden;">${properties.text}</div>`;
 
             case 'checkbox':
-                return `<div${idAttr} class="checkbox-element" style="position: absolute; left: ${x}px; top: ${y}px; width: ${width}px; height: ${height}px; overflow: hidden;">
-                <input type="checkbox" style="float: left; margin-right: 8px; margin-top: 2px; width: 16px; height: 16px;">
-                <span class="checkbox-label" style="display: inline-block; font-size: 14pt; color: #2c3e50;">${properties.text}</span>
-                <div style="clear: both;"></div>
-            </div>`;
+                const checkboxSize = properties.checkboxSize || 16;
+                const labelGap = properties.labelGap || 8;
+                const labelPosition = properties.labelPosition || 'right';
+                const checkfontSize = properties.fontSize || 14;
+
+                if (labelPosition === 'right') {
+                    return `<div${idAttr} class="checkbox-element" style="position: absolute; left: ${x}px; top: ${y}px; width: ${width}px; height: ${height}px; line-height: 1; white-space: nowrap;">
+                        <input type="checkbox" style="display: inline-block; vertical-align: middle; margin: 0 ${labelGap}px 0 0; width: ${checkboxSize}px; height: ${checkboxSize}px;">
+                        <span class="checkbox-label" style="display: inline-block; vertical-align: middle; font-size: ${checkfontSize}pt; color: #2c3e50;">${properties.text}</span>
+                    </div>`;
+                } else {
+                    return `<div${idAttr} class="checkbox-element" style="position: absolute; left: ${x}px; top: ${y}px; width: ${width}px; height: ${height}px; line-height: 1; white-space: nowrap;">
+                        <span class="checkbox-label" style="display: inline-block; vertical-align: middle; font-size: ${checkfontSize}pt; color: #2c3e50; margin: 0 ${labelGap}px 0 0;">${properties.text}</span>
+                        <input type="checkbox" style="display: inline-block; vertical-align: middle; margin: 0; width: ${checkboxSize}px; height: ${checkboxSize}px;">
+                    </div>`;
+                }
 
             case 'signature':
                 const paddingTop = Math.max(10, Math.floor(height / 3));
@@ -2245,23 +2348,25 @@ class FormDesigner {
             }
         
         /* Checkbox styles - No Flexbox */
-        .checkbox-element { 
-            display: block !important;
-            overflow: hidden;
+        .checkbox-element {
+            display: block;
+            padding: 4px 8px;
+            background: transparent;
+            line-height: 1;
+            white-space: nowrap;
         }
-        .checkbox-element input[type="checkbox"] {
-            float: left;
-            margin-right: 8px;
-            margin-top: 2px;
-            width: 16px;
-            height: 16px;
-        }
-        .checkbox-label { 
-            font-size: 14pt !important; 
-            color: #2c3e50 !important;
-            display: inline-block;
-            line-height: 1.4;
-        }
+
+            .checkbox-element input[type="checkbox"] {
+                display: inline-block;
+                vertical-align: middle;
+            }
+
+            .checkbox-element .checkbox-label {
+                display: inline-block;
+                vertical-align: middle;
+                line-height: 1;
+            }
+
         
         /* Signature styles - No Flexbox */
         .signature-element { 
@@ -2315,7 +2420,7 @@ class FormDesigner {
         // Clear redo stack when new action is performed
         this.redoStack = [];
 
-        console.log(`State captured: ${actionName} (${this.undoStack.length} in stack)`);
+        //console.log(`State captured: ${actionName} (${this.undoStack.length} in stack)`);
     }
 
     // Restore state from snapshot
