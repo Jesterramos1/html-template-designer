@@ -215,8 +215,13 @@ class FormDesigner {
                 rows: 2,
                 columns: 3,
                 headers: ['Header 1', 'Header 2', 'Header 3'],
-                columnWidths: [33.33, 33.33, 33.34], // Percentages
-                fontSize: 12
+                columnWidths: [33.33, 33.33, 33.34],
+                fontSize: 12,
+                rowHeight: 30,
+                showHeader: true,
+                showBorders: true,
+                borderWidth: 1,
+                borderColor: '#34495e'
             },
             'label': {
                 ...baseProps,
@@ -241,6 +246,20 @@ class FormDesigner {
 
     renderElement(elementData) {
         let elementDiv = document.getElementById(elementData.id);
+
+        // For tables, always remove and re-create when structural changes occur
+        if (elementData.type === 'table' && elementDiv) {
+            // Check if we need to force re-render by comparing current content with expected
+            const currentRows = elementDiv.querySelectorAll('.table-row').length;
+            const expectedRows = elementData.properties.showHeader ?
+                elementData.properties.rows :
+                elementData.properties.rows + 1;
+
+            if (currentRows !== expectedRows) {
+                elementDiv.remove();
+                elementDiv = null;
+            }
+        }
 
         if (!elementDiv) {
             elementDiv = document.createElement('div');
@@ -316,7 +335,14 @@ class FormDesigner {
                 break;
 
             case 'table':
+                const resizeHandles = Array.from(elementDiv.querySelectorAll('.resize-handle'));
+                const columnResizeHandles = Array.from(elementDiv.querySelectorAll('.column-resize-handle'));
+
                 this.renderTable(elementDiv, elementData);
+
+                // Restore resize handles after updating content
+                resizeHandles.forEach(handle => elementDiv.appendChild(handle));
+                columnResizeHandles.forEach(handle => elementDiv.appendChild(handle));
                 break;
 
             case 'label':
@@ -350,33 +376,129 @@ class FormDesigner {
         const cols = properties.columns || 3;
         const columnWidths = properties.columnWidths || Array(cols).fill(100 / cols);
         const fontSize = properties.fontSize || 12;
+        const rowHeight = properties.rowHeight || 30;
+        const showHeader = properties.showHeader !== false;
+        const showBorders = properties.showBorders !== false;
+        const borderWidth = showBorders ? (properties.borderWidth || 1) : 0;
+        const borderColor = properties.borderColor || '#34495e';
 
-        let tableHTML = '<div class="table-header table-row">';
-        for (let i = 0; i < cols; i++) {
-            const isLastCell = i === cols - 1;
-            tableHTML += `
-            <div class="table-cell" style="width: ${columnWidths[i]}%; font-size: ${fontSize}pt; float: left; box-sizing: border-box; border-right: ${isLastCell ? 'none' : '1px solid #34495e'};">
-                ${properties.headers?.[i] || `Header ${i + 1}`}
-                ${i < cols - 1 ? '<div class="column-resize-handle" data-column="' + i + '"></div>' : ''}
-            </div>`;
+        let tableHTML = '';
+
+        // Header row (if enabled)
+        if (showHeader) {
+            tableHTML += '<div class="table-header table-row">';
+            for (let i = 0; i < cols; i++) {
+                const isLastCell = i === cols - 1;
+                const borderRight = showBorders ?
+                    (!isLastCell ? `${borderWidth}px solid ${borderColor}` : 'none') :
+                    'none';
+                tableHTML += `
+        <div class="table-cell" style="width: ${columnWidths[i]}%; font-size: ${fontSize}pt; height: ${rowHeight}px; line-height: ${rowHeight}px; float: left; box-sizing: border-box; border-right: ${borderRight};">
+            ${properties.headers?.[i] || `Header ${i + 1}`}
+            ${i < cols - 1 ? '<div class="column-resize-handle" data-column="' + i + '"></div>' : ''}
+        </div>`;
+            }
+            tableHTML += '<div style="clear: both;"></div></div>';
         }
-        tableHTML += '<div style="clear: both;"></div></div>';
 
-        for (let i = 1; i < rows; i++) {
-            const isLastRow = i === rows - 1;
-            tableHTML += `<div class="table-row" style="border-bottom: ${isLastRow ? 'none' : '1px solid #34495e'}">`;
+        // Data rows
+        const startRow = showHeader ? 1 : 0;
+        const totalRows = showHeader ? rows : rows + 1;
+
+        for (let i = startRow; i < totalRows; i++) {
+            const isLastRow = i === totalRows - 1;
+            const borderBottom = showBorders ?
+                (!isLastRow ? `${borderWidth}px solid ${borderColor}` : 'none') :
+                'none';
+            tableHTML += `<div class="table-row" style="border-bottom: ${borderBottom}; height: ${rowHeight}px; line-height: ${rowHeight}px;">`;
             for (let j = 0; j < cols; j++) {
                 const isLastCell = j === cols - 1;
-                tableHTML += `<div class="table-cell" style="width: ${columnWidths[j]}%; font-size: ${fontSize}pt; float: left; box-sizing: border-box; border-right: ${isLastCell ? 'none' : '1px solid #34495e'};">&nbsp;</div>`;
+                const borderRight = showBorders ?
+                    (!isLastCell ? `${borderWidth}px solid ${borderColor}` : 'none') :
+                    'none';
+                tableHTML += `<div class="table-cell" style="width: ${columnWidths[j]}%; font-size: ${fontSize}pt; height: ${rowHeight}px; line-height: ${rowHeight}px; float: left; box-sizing: border-box; border-right: ${borderRight};">&nbsp;</div>`;
             }
             tableHTML += '<div style="clear: both;"></div></div>';
         }
 
         elementDiv.innerHTML = tableHTML;
 
-        // Add column resize listeners
-        elementDiv.querySelectorAll('.column-resize-handle').forEach(handle => {
-            handle.addEventListener('mousedown', (e) => this.startColumnResize(e, elementData));
+        // Update table outer border and apply design mode styles
+        this.applyTableDesignModeStyles(elementDiv, showBorders, borderWidth, borderColor);
+
+        // Attach resize listeners
+        this.attachColumnResizeListeners(elementDiv, elementData);
+    }
+
+    // Add this new method to handle design mode styling
+    applyTableDesignModeStyles(tableDiv, showBorders, borderWidth, borderColor) {
+        // Remove any existing design mode classes
+        tableDiv.classList.remove('design-mode-dashed');
+
+        if (showBorders) {
+            // Show solid borders when enabled
+            tableDiv.style.border = `${borderWidth}px solid ${borderColor}`;
+
+            // Update all cells and rows to use solid borders
+            const cells = tableDiv.querySelectorAll('.table-cell');
+            cells.forEach(cell => {
+                const currentBorder = cell.style.borderRight;
+                if (currentBorder && currentBorder !== 'none') {
+                    cell.style.borderRight = currentBorder.replace('dashed', 'solid');
+                }
+            });
+
+            const rows = tableDiv.querySelectorAll('.table-row');
+            rows.forEach(row => {
+                const currentBorder = row.style.borderBottom;
+                if (currentBorder && currentBorder !== 'none') {
+                    row.style.borderBottom = currentBorder.replace('dashed', 'solid');
+                }
+            });
+        } else {
+            // In design mode, show dashed borders for visibility
+            tableDiv.classList.add('design-mode-dashed');
+            tableDiv.style.border = '1px dashed #95a5a6';
+
+            // Add dashed borders to cells and rows for design mode visibility
+            const cells = tableDiv.querySelectorAll('.table-cell');
+            cells.forEach((cell, index) => {
+                const cellsInRow = tableDiv.querySelectorAll('.table-row:first-child .table-cell').length;
+                const isLastInRow = (index + 1) % cellsInRow === 0;
+                if (!isLastInRow) {
+                    cell.style.borderRight = '1px dashed #bdc3c7';
+                } else {
+                    cell.style.borderRight = 'none';
+                }
+            });
+
+            const rows = tableDiv.querySelectorAll('.table-row');
+            rows.forEach((row, index) => {
+                if (index < rows.length - 1) {
+                    row.style.borderBottom = '1px dashed #bdc3c7';
+                } else {
+                    row.style.borderBottom = 'none';
+                }
+            });
+        }
+    }
+
+    // Add this new method to handle column resize listeners
+    attachColumnResizeListeners(elementDiv, elementData) {
+        const resizeHandles = elementDiv.querySelectorAll('.column-resize-handle');
+
+        resizeHandles.forEach(handle => {
+            // Remove any existing listeners
+            const newHandle = handle.cloneNode(true);
+            handle.parentNode.replaceChild(newHandle, handle);
+
+            // Add new listener
+            newHandle.addEventListener('mousedown', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                const columnIndex = parseInt(e.target.dataset.column);
+                this.startColumnResize(e, elementData);
+            });
         });
     }
 
@@ -628,6 +750,8 @@ class FormDesigner {
 
     startColumnResize(e, tableElement) {
         e.stopPropagation();
+        e.preventDefault();
+
         this.isResizingColumn = true;
         const columnIndex = parseInt(e.target.dataset.column);
         this.resizingColumnIndex = columnIndex;
@@ -637,8 +761,25 @@ class FormDesigner {
         const startX = e.clientX;
         const startWidths = [...tableElement.properties.columnWidths];
 
+        // Create a visual guide line
+        const guideLine = document.createElement('div');
+        guideLine.style.cssText = `
+        position: absolute;
+        top: ${tableDiv.offsetTop}px;
+        left: ${e.clientX}px;
+        width: 2px;
+        height: ${tableDiv.offsetHeight}px;
+        background: #3498db;
+        z-index: 10000;
+        pointer-events: none;
+    `;
+        document.body.appendChild(guideLine);
+
         const mouseMoveHandler = (e) => {
             if (!this.isResizingColumn) return;
+
+            // Update guide line position
+            guideLine.style.left = `${e.clientX}px`;
 
             const deltaX = (e.clientX - startX);
             const deltaPercent = (deltaX / tableWidth) * 100;
@@ -653,7 +794,7 @@ class FormDesigner {
             const widthChange = newCurrentWidth - currentWidth;
 
             newWidths[columnIndex] = newCurrentWidth;
-            newWidths[columnIndex + 1] = nextWidth - widthChange;
+            newWidths[columnIndex + 1] = Math.max(5, nextWidth - widthChange);
 
             // Ensure percentages add up to 100
             const total = newWidths.reduce((sum, w) => sum + w, 0);
@@ -664,24 +805,40 @@ class FormDesigner {
                 });
             }
 
+            // Update the table element properties but don't fully re-render
             tableElement.properties.columnWidths = newWidths;
-            this.renderElement(tableElement);
+
+            // Update the table visually without full re-render for better performance
+            this.updateTableColumns(tableDiv, newWidths);
         };
 
         const mouseUpHandler = () => {
             this.isResizingColumn = false;
             this.resizingColumnIndex = null;
+
+            // Remove guide line
+            guideLine.remove();
+
             document.removeEventListener('mousemove', mouseMoveHandler);
             document.removeEventListener('mouseup', mouseUpHandler);
 
-            if (this.selectedElements.length > 0) {
-                this.captureState(`ResizeColumn ${this.selectedElements.length} element(s)`);
-            }
+            // Final render with the updated state
+            this.renderElement(tableElement);
+            this.captureState('Resize table columns');
             this.saveToLocalStorage();
         };
 
         document.addEventListener('mousemove', mouseMoveHandler);
         document.addEventListener('mouseup', mouseUpHandler);
+    }
+
+    // Add this new method to update table columns without full re-render
+    updateTableColumns(tableDiv, columnWidths) {
+        const cells = tableDiv.querySelectorAll('.table-cell');
+        cells.forEach((cell, index) => {
+            const columnIndex = index % columnWidths.length;
+            cell.style.width = `${columnWidths[columnIndex]}%`;
+        });
     }
 
     updateElementPosition(id, x, y) {
@@ -1270,40 +1427,76 @@ class FormDesigner {
                 if (properties.columnWidths) {
                     properties.columnWidths.forEach((width, index) => {
                         columnControls += `
-                        <div class="form-group">
-                            <label>Column ${index + 1} Width (%)</label>
-                            <input type="number" value="${width.toFixed(2)}" step="0.1" min="5" max="95"
-                                   onchange="designer.updateTableColumnWidth('${element.id}', ${index}, this.value)">
-                        </div>
-                    `;
+                            <div class="form-group">
+                                <label>Column ${index + 1} Width (%)</label>
+                                <input type="number" value="${width.toFixed(2)}" step="0.1" min="5" max="95"
+                                       onchange="designer.updateTableColumnWidth('${element.id}', ${index}, this.value)">
+                            </div>
+                        `;
                     });
                 }
 
                 return `
-                <div class="property-group">
-                    <h4>Table</h4>
-                    <div class="form-group">
-                        <label>Rows</label>
-                        <input type="number" value="${properties.rows}" onchange="designer.updateTableProperty('${element.id}', 'rows', this.value)">
+                    <div class="property-group">
+                        <h4>Table Structure</h4>
+                        <div class="form-group">
+                            <label>Rows</label>
+                            <input type="number" value="${properties.rows}" min="1" max="20" onchange="designer.updateTableProperty('${element.id}', 'rows', this.value)">
+                        </div>
+                        <div class="form-group">
+                            <label>Columns</label>
+                            <input type="number" value="${properties.columns}" min="1" max="10" onchange="designer.updateTableProperty('${element.id}', 'columns', this.value)">
+                        </div>
+                        <div class="form-group">
+                            <label>Row Height (px)</label>
+                            <input type="number" value="${properties.rowHeight || 30}" min="20" max="100" onchange="designer.updateTableProperty('${element.id}', 'rowHeight', this.value)">
+                        </div>
+                        <div class="form-group">
+                            <label>Font Size (pt)</label>
+                            <input type="number" value="${properties.fontSize || 12}" min="6" max="72" onchange="designer.updateTableProperty('${element.id}', 'fontSize', this.value)">
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label>Columns</label>
-                        <input type="number" value="${properties.columns}" onchange="designer.updateTableProperty('${element.id}', 'columns', this.value)">
+                    <div class="property-group">
+                        <h4>Border Settings</h4>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" ${properties.showBorders !== false ? 'checked' : ''} 
+                                       onchange="designer.updateTableProperty('${element.id}', 'showBorders', this.checked)">
+                                Show All Borders
+                            </label>
+                            <small style="display: block; color: #7f8c8d; margin-top: 4px;">
+                                When unchecked, all borders (table and cells) will be hidden in export/print
+                            </small>
+                        </div>
+                        <div class="form-group">
+                            <label>Border Width (px)</label>
+                            <input type="number" value="${properties.borderWidth || 1}" min="0" max="5" 
+                                   onchange="designer.updateTableProperty('${element.id}', 'borderWidth', this.value)"
+                                   ${properties.showBorders === false ? 'disabled' : ''}>
+                        </div>
+                        <div class="form-group">
+                            <label>Border Color</label>
+                            <div class="color-input">
+                                <input type="color" value="${properties.borderColor || '#34495e'}" 
+                                       onchange="designer.updateTableProperty('${element.id}', 'borderColor', this.value)"
+                                       ${properties.showBorders === false ? 'disabled' : ''}>
+                                <input type="text" value="${properties.borderColor || '#34495e'}" 
+                                       onchange="designer.updateTableProperty('${element.id}', 'borderColor', this.value)"
+                                       ${properties.showBorders === false ? 'disabled' : ''}>
+                            </div>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label>Font Size (pt)</label>
-                        <input type="number" value="${properties.fontSize || 12}" min="6" max="72" onchange="designer.updateTableProperty('${element.id}', 'fontSize', this.value)">
+                    <div class="property-group">
+                        <h4>Header Text (comma separated)</h4>
+                        <div class="form-group">
+                            <input type="text" value="${properties.headers.join(', ')}" onchange="designer.updateTableHeaders('${element.id}', this.value)" placeholder="Header 1, Header 2, Header 3">
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label>Header Text (comma separated)</label>
-                        <input type="text" value="${properties.headers.join(', ')}" onchange="designer.updateTableHeaders('${element.id}', this.value)">
+                    <div class="property-group">
+                        <h4>Column Widths</h4>
+                        ${columnControls}
                     </div>
-                </div>
-                <div class="property-group">
-                    <h4>Column Widths</h4>
-                    ${columnControls}
-                </div>
-            `;
+                    `;
 
             case 'label':
                 return `
@@ -1389,10 +1582,33 @@ class FormDesigner {
     updateTableProperty(elementId, property, value) {
         const element = this.getElementById(elementId);
         if (element && element.type === 'table') {
-            const newValue = parseInt(value);
+            let newValue = value;
+
+            if (['rows', 'columns', 'rowHeight', 'fontSize', 'borderWidth'].includes(property)) {
+                newValue = parseInt(value);
+            } else if (property === 'showHeader' || property === 'showBorders') {
+                newValue = Boolean(value);
+            }
+
             element.properties[property] = newValue;
 
-            // Initialize or update column widths and headers
+            // Force complete re-render when structural properties change
+            if (['rows', 'columns', 'rowHeight', 'fontSize', 'showHeader', 'showBorders'].includes(property)) {
+                // Remove the element and re-render it completely
+                const elementDiv = document.getElementById(elementId);
+                if (elementDiv) {
+                    elementDiv.remove();
+                }
+                this.renderElement(element);
+            }
+
+            // Enable/disable border controls based on showBorders state
+            if (property === 'showBorders') {
+                // Re-render to update the disabled state of border controls
+                this.showPropertiesPanel(element);
+            }
+
+            // Initialize or update column widths and headers when columns change
             if (property === 'columns') {
                 const currentColumns = element.properties.columnWidths?.length || 0;
                 if (newValue > currentColumns) {
@@ -1403,6 +1619,13 @@ class FormDesigner {
                         ...(element.properties.headers || Array(currentColumns).fill('Header')),
                         ...Array(newValue - currentColumns).fill('Header')
                     ];
+
+                    // Force re-render after adding columns
+                    const elementDiv = document.getElementById(elementId);
+                    if (elementDiv) {
+                        elementDiv.remove();
+                    }
+                    this.renderElement(element);
                 } else if (newValue < currentColumns) {
                     // Remove columns and redistribute percentages
                     element.properties.columnWidths = element.properties.columnWidths.slice(0, newValue);
@@ -1411,10 +1634,26 @@ class FormDesigner {
                     // Normalize to 100%
                     const total = element.properties.columnWidths.reduce((sum, w) => sum + w, 0);
                     element.properties.columnWidths = element.properties.columnWidths.map(w => (w / total) * 100);
+
+                    // Force re-render after removing columns
+                    const elementDiv = document.getElementById(elementId);
+                    if (elementDiv) {
+                        elementDiv.remove();
+                    }
+                    this.renderElement(element);
                 }
             }
 
-            this.renderElement(element);
+            // For other properties that should trigger re-render
+            if (['rowHeight', 'fontSize', 'showHeader'].includes(property)) {
+                const elementDiv = document.getElementById(elementId);
+                if (elementDiv) {
+                    elementDiv.remove();
+                }
+                this.renderElement(element);
+            }
+
+            this.captureState(`Update table ${property}`);
             this.saveToLocalStorage();
         }
     }
@@ -1883,23 +2122,37 @@ class FormDesigner {
 
             case 'table':
                 const fontSize = properties.fontSize || 12;
-                let tableHTML = `<div${idAttr} class="table-element" style="position: absolute; left: ${x}px; top: ${y}px; width: ${width}px;">`;
+                const rowHeight = properties.rowHeight || 30; // Make sure to get rowHeight
+                const showBorders = properties.showBorders !== false;
+                const borderWidth = showBorders ? (properties.borderWidth || 1) : 0;
+                const borderColor = properties.borderColor || '#34495e';
 
-                // Header row
-                tableHTML += '<div class="table-row table-header">';
-                properties.headers.forEach((header, index) => {
-                    const isLastCell = index === properties.columns - 1;
-                    tableHTML += `<div class="table-cell" style="width: ${properties.columnWidths[index]}%; font-size: ${fontSize}pt; float: left; box-sizing: border-box; border-right: ${isLastCell ? 'none' : '1px solid #34495e'};">${header}</div>`;
-                });
-                tableHTML += '<div style="clear: both;"></div></div>';
+                let tableHTML = `<div${idAttr} class="table-element" style="position: absolute; left: ${x}px; top: ${y}px; width: ${width}px; ${showBorders ? `border: ${borderWidth}px solid ${borderColor};` : 'border: none;'}">`;
 
-                // Data rows
-                for (let i = 1; i < properties.rows; i++) {
-                    const isLastRow = i === properties.rows - 1;
-                    tableHTML += `<div class="table-row" style="border-bottom: ${isLastRow ? 'none' : '1px solid #34495e'};">`;
+                // Header row - ADD EXPLICIT HEIGHT AND BORDER BOTTOM
+                if (properties.showHeader !== false) {
+                    const headerBorderBottom = showBorders ? `border-bottom: ${borderWidth}px solid ${borderColor};` : 'border: none;';
+                    tableHTML += '<div class="table-row table-header" style="height: ' + rowHeight + 'px; line-height: ' + rowHeight + 'px; ' + headerBorderBottom + '">';
+                    properties.headers.forEach((header, index) => {
+                        const isLastCell = index === properties.columns - 1;
+                        const borderRight = showBorders && !isLastCell ? `border-right: ${borderWidth}px solid ${borderColor};` : 'border: none;';
+                        tableHTML += `<div class="table-cell" style="width: ${properties.columnWidths[index]}%; font-size: ${fontSize}pt; height: ${rowHeight}px; line-height: ${rowHeight}px; ${borderRight}">${header}</div>`;
+                    });
+                    tableHTML += '<div style="clear: both;"></div></div>';
+                }
+
+                // Data rows - KEEP EXISTING HEIGHT (now consistent with header)
+                const startRow = properties.showHeader !== false ? 1 : 0;
+                const totalRows = properties.showHeader !== false ? properties.rows : properties.rows + 1;
+
+                for (let i = startRow; i < totalRows; i++) {
+                    const isLastRow = i === totalRows - 1;
+                    const borderBottom = showBorders && !isLastRow ? `border-bottom: ${borderWidth}px solid ${borderColor};` : 'border: none;';
+                    tableHTML += `<div class="table-row" style="${borderBottom} height: ${rowHeight}px; line-height: ${rowHeight}px;">`;
                     for (let j = 0; j < properties.columns; j++) {
                         const isLastCell = j === properties.columns - 1;
-                        tableHTML += `<div class="table-cell" style="width: ${properties.columnWidths[j]}%; font-size: ${fontSize}pt; float: left; box-sizing: border-box; border-right: ${isLastCell ? 'none' : '1px solid #34495e'};">&nbsp;</div>`;
+                        const borderRight = showBorders && !isLastCell ? `border-right: ${borderWidth}px solid ${borderColor};` : 'border: none;';
+                        tableHTML += `<div class="table-cell" style="width: ${properties.columnWidths[j]}%; font-size: ${fontSize}pt; height: ${rowHeight}px; line-height: ${rowHeight}px; ${borderRight}">&nbsp;</div>`;
                     }
                     tableHTML += '<div style="clear: both;"></div></div>';
                 }
@@ -1942,45 +2195,54 @@ class FormDesigner {
         }
         
         /* Table Styles - Rotativa Compatible (No Flexbox) */
-        .table-element { 
-            border: 1px solid #34495e !important; 
-            background: white !important;
-            border-collapse: collapse;
+        .table-element {
+            border: 1px dashed #95a5a6;
+            background: white;
+            display: block;
+            height: auto !important;
+            min-height: 30px;
             overflow: hidden;
         }
-        .table-row { 
-            border-bottom: 1px solid #34495e !important;
-            min-height: 10px !important;
+
+            .table-element[style*="border-style: solid"],
+            .table-element[style*="border-width:"] {
+                border-style: solid !important;
+            }
+
+        .table-row {
             display: block;
+            min-height: 10px;
             width: 100%;
             overflow: hidden;
+            height: auto !important;
         }
-        .table-row:after {
-            content: "";
-            display: table;
-            clear: both;
-        }
-        .table-row:last-child { 
-            border-bottom: none !important; 
-        }
+
+            .table-row:after {
+                content: "";
+                display: table;
+                clear: both;
+            }
+
+            .table-row:last-child {
+                border-bottom: none;
+            }
+
         .table-cell {
-            padding: 8px;
-            border-right: 1px solid #34495e;
             min-height: 20px;
             position: relative;
             line-height: 1.2;
-            vertical-align: top;
+            vertical-align: middle;
             float: left;
             box-sizing: border-box;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            height: inherit !important;
         }
-        .table-cell:last-child {
-            border-right: none;
-        }
-        .table-header {
-            color: #2c3e50;
-            font-weight: bold;
-            min-height: 10px;
-        }
+
+            .table-cell:last-child {
+                border-right: none;
+            }
         
         /* Checkbox styles - No Flexbox */
         .checkbox-element { 

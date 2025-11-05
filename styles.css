@@ -326,7 +326,7 @@ body.dragging, body.dragging * {
 
 /* Table */
 .table-element {
-    border: 1px solid #34495e;
+    border: 1px dashed #95a5a6;
     background: white;
     display: block;
     height: auto !important;
@@ -334,9 +334,38 @@ body.dragging, body.dragging * {
     overflow: hidden;
 }
 
+    /* Design mode - dashed borders for visibility when borders are hidden */
+    .table-element.design-mode-dashed {
+        border: 1px dashed #95a5a6 !important;
+    }
+
+        .table-element.design-mode-dashed .table-cell {
+            border-right: 1px dashed #bdc3c7 !important;
+        }
+
+        .table-element.design-mode-dashed .table-row {
+            border-bottom: 1px dashed #bdc3c7 !important;
+        }
+
+        .table-element.design-mode-dashed .table-header {
+            border-bottom: 1px dashed #bdc3c7 !important;
+        }
+
+    /* When table has borders, use solid style */
+    .table-element:not(.design-mode-dashed) {
+        border-style: solid !important;
+    }
+
+        .table-element:not(.design-mode-dashed) .table-cell {
+            border-right-style: solid !important;
+        }
+
+        .table-element:not(.design-mode-dashed) .table-row {
+            border-bottom-style: solid !important;
+        }
+
 .table-row {
     display: block;
-    border-bottom: 1px solid #bdc3c7;
     min-height: 10px;
     width: 100%;
     overflow: hidden;
@@ -353,25 +382,20 @@ body.dragging, body.dragging * {
     }
 
 .table-cell {
-    padding: 8px;
-    border-right: 1px solid #bdc3c7;
     min-height: 20px;
     position: relative;
     line-height: 1.2;
-    vertical-align: top;
+    vertical-align: middle;
     float: left;
     box-sizing: border-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
     .table-cell:last-child {
         border-right: none;
     }
-
-.table-header {
-    color: #2c3e50;
-    font-weight: bold;
-    min-height: 10px;
-}
 
 .column-resize-handle {
     position: absolute;
@@ -389,6 +413,18 @@ body.dragging, body.dragging * {
         background: #3498db;
     }
 
+    .column-resize-handle:active {
+        background: #2980b9;
+    }
+
+/* Visual feedback during resize */
+.table-element.resizing {
+    pointer-events: none;
+}
+
+    .table-element.resizing .column-resize-handle {
+        background: #2980b9;
+    }
 
 /* Checkbox */
 .checkbox-element {
