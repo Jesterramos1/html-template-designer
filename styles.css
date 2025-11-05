@@ -16,6 +16,31 @@ body {
     flex-direction: column;
 }
 
+/* Prevent text selection on draggable elements and during interactions */
+.toolbox-item, .design-element {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+    /* Optional: Allow text selection only when explicitly editing */
+    .design-element.selected {
+        -webkit-user-select: text;
+        -moz-user-select: text;
+        -ms-user-select: text;
+        user-select: text;
+    }
+
+/* During drag operations, prevent all text selection */
+body.dragging, body.dragging * {
+    -webkit-user-select: none !important;
+    -moz-user-select: none !important;
+    -ms-user-select: none !important;
+    user-select: none !important;
+    cursor: grabbing !important;
+}
+
 /* Header */
 .header {
     background: #2c3e50;
@@ -162,6 +187,16 @@ body {
         cursor: grabbing;
     }
 
+.form-group input[type="radio"] {
+    width: auto;
+    margin: 0;
+    cursor: pointer;
+}
+
+.form-group label input[type="radio"] {
+    margin-right: 5px;
+}
+
 /* Canvas Area */
 .canvas-area {
     flex: 1;
@@ -248,6 +283,12 @@ body {
         box-shadow: 0 0 0 2px #3498db;
         z-index: 10;
     }
+        
+    .design-element.marquee-highlight {
+        border-color: #9b59b6 !important;
+        box-shadow: 0 0 0 2px #9b59b6 !important;
+        z-index: 5;
+    }
 
         .design-element.selected .resize-handle {
             display: block !important;
@@ -295,7 +336,7 @@ body {
 
 /* Table */
 .table-element {
-    border: 1px solid #34495e;
+    border: 1px dashed #95a5a6;
     background: white;
     display: block;
     height: auto !important;
@@ -303,9 +344,38 @@ body {
     overflow: hidden;
 }
 
+    /* Design mode - dashed borders for visibility when borders are hidden */
+    .table-element.design-mode-dashed {
+        border: 1px dashed #95a5a6 !important;
+    }
+
+        .table-element.design-mode-dashed .table-cell {
+            border-right: 1px dashed #bdc3c7 !important;
+        }
+
+        .table-element.design-mode-dashed .table-row {
+            border-bottom: 1px dashed #bdc3c7 !important;
+        }
+
+        .table-element.design-mode-dashed .table-header {
+            border-bottom: 1px dashed #bdc3c7 !important;
+        }
+
+    /* When table has borders, use solid style */
+    .table-element:not(.design-mode-dashed) {
+        border-style: solid !important;
+    }
+
+        .table-element:not(.design-mode-dashed) .table-cell {
+            border-right-style: solid !important;
+        }
+
+        .table-element:not(.design-mode-dashed) .table-row {
+            border-bottom-style: solid !important;
+        }
+
 .table-row {
     display: block;
-    border-bottom: 1px solid #bdc3c7;
     min-height: 10px;
     width: 100%;
     overflow: hidden;
@@ -322,25 +392,20 @@ body {
     }
 
 .table-cell {
-    padding: 8px;
-    border-right: 1px solid #bdc3c7;
     min-height: 20px;
     position: relative;
     line-height: 1.2;
-    vertical-align: top;
+    vertical-align: middle;
     float: left;
     box-sizing: border-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
     .table-cell:last-child {
         border-right: none;
     }
-
-.table-header {
-    color: #2c3e50;
-    font-weight: bold;
-    min-height: 10px;
-}
 
 .column-resize-handle {
     position: absolute;
@@ -358,28 +423,37 @@ body {
         background: #3498db;
     }
 
+    .column-resize-handle:active {
+        background: #2980b9;
+    }
+
+/* Visual feedback during resize */
+.table-element.resizing {
+    pointer-events: none;
+}
+
+    .table-element.resizing .column-resize-handle {
+        background: #2980b9;
+    }
 
 /* Checkbox */
 .checkbox-element {
     display: block;
-    overflow: hidden;
     padding: 4px 8px;
     background: transparent;
+    line-height: 1;
+    white-space: nowrap;
 }
 
     .checkbox-element input[type="checkbox"] {
-        float: left;
-        margin-right: 8px;
-        margin-top: 2px;
-        width: 16px;
-        height: 16px;
+        display: inline-block;
+        vertical-align: middle;
     }
 
     .checkbox-element .checkbox-label {
         display: inline-block;
-        font-size: 14pt;
-        color: #2c3e50;
-        line-height: 1.4;
+        vertical-align: middle;
+        line-height: 1;
     }
 
 /* Signature Box */
@@ -497,7 +571,7 @@ body {
     border-radius: 2px;
     z-index: 10000; /* Increased z-index */
     box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-    display: none;
+    display: none !important;
     pointer-events: auto;
 }
 
@@ -632,4 +706,20 @@ body {
     border-color: #e74c3c !important;
     box-shadow: 0 0 0 2px #e74c3c !important;
     transition: all 0.1s ease;
+}
+
+.selection-marquee {
+    position: absolute;
+    border: 2px dashed #9b59b6;
+    background: rgba(155, 89, 182, 0.1);
+    pointer-events: none;
+    z-index: 1000;
+}
+
+#undoRedoNotification {
+    background: #2c3e50 !important;
+    color: white !important;
+    padding: 10px 15px !important;
+    border-radius: 4px !important;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.3) !important;
 }
