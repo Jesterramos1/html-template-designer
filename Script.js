@@ -2,6 +2,7 @@ class FormDesigner {
     constructor() {
         this.elements = [];
         this.selectedElement = null;
+        this.selectedElements = [];
         this.nextId = 1;
         this.zoom = 1;
         this.showGrid = false;
@@ -13,6 +14,8 @@ class FormDesigner {
         this.currentResizeHandle = null;
         this.isResizingColumn = false;
         this.resizingColumnIndex = null;
+        this.isMarqueeSelecting = false;
+        this.marqueeStart = { x: 0, y: 0 };
 
         this.initializeElements();
         this.setupEventListeners();
@@ -57,7 +60,8 @@ class FormDesigner {
 
         this.canvas.addEventListener('dragover', this.handleCanvasDragOver.bind(this));
         this.canvas.addEventListener('drop', this.handleCanvasDrop.bind(this));
-        this.canvas.addEventListener('click', this.handleCanvasClick.bind(this));
+        //this.canvas.addEventListener('click', this.handleCanvasClick.bind(this));
+        this.canvas.addEventListener('mousedown', this.handleCanvasMouseDown.bind(this));
 
         // Header controls
         document.getElementById('saveBtn').addEventListener('click', this.saveTemplate.bind(this));
@@ -445,49 +449,78 @@ class FormDesigner {
             if (e.target.classList.contains('resize-handle') ||
                 e.target.classList.contains('column-resize-handle')) return;
 
-            this.selectElement(this.getElementById(elementDiv.id));
-            this.startDrag(e, elementDiv);
+            const element = this.getElementById(elementDiv.id);
+
+            // Handle multi-selection with Ctrl key
+            if (e.ctrlKey || e.metaKey) {
+                e.stopPropagation();
+                this.toggleElementSelection(element);
+            } else {
+                // If clicking on an already selected element, start dragging all
+                if (!this.selectedElements.includes(element)) {
+                    this.selectElement(element);
+                }
+                this.startDrag(e, elementDiv);
+            }
         });
         elementDiv.addEventListener('contextmenu', (e) => {
             e.preventDefault();
-            this.selectElement(this.getElementById(elementDiv.id));
+            const element = this.getElementById(elementDiv.id);
+            if (!this.selectedElements.includes(element)) {
+                this.selectElement(element);
+            }
             this.showContextMenu(e);
         });
     }
 
     startDrag(e, elementDiv) {
+        e.preventDefault();
+        e.stopPropagation();
+
         this.isDragging = true;
 
         const element = this.getElementById(elementDiv.id);
         const canvasRect = this.canvas.getBoundingClientRect();
 
-        // Calculate the mouse position relative to the element's top-left corner
-        const elementX = (e.clientX - canvasRect.left) / this.zoom;
-        const elementY = (e.clientY - canvasRect.top) / this.zoom;
+        // Store initial positions for all selected elements
+        const initialPositions = new Map();
+        this.selectedElements.forEach(el => {
+            initialPositions.set(el.id, { x: el.x, y: el.y });
+        });
 
-        this.dragOffset.x = elementX - element.x;
-        this.dragOffset.y = elementY - element.y;
+        // Calculate offset from mouse to element position
+        const startX = (e.clientX - canvasRect.left) / this.zoom;
+        const startY = (e.clientY - canvasRect.top) / this.zoom;
 
         const mouseMoveHandler = (e) => {
             if (!this.isDragging) return;
 
-            // Calculate new position based on current mouse position
-            const newX = (e.clientX - canvasRect.left) / this.zoom - this.dragOffset.x;
-            const newY = (e.clientY - canvasRect.top) / this.zoom - this.dragOffset.y;
+            const currentX = (e.clientX - canvasRect.left) / this.zoom;
+            const currentY = (e.clientY - canvasRect.top) / this.zoom;
 
-            let x = newX;
-            let y = newY;
+            const deltaX = currentX - startX;
+            const deltaY = currentY - startY;
 
-            if (this.snapToGrid) {
-                x = Math.round(newX / this.gridSize) * this.gridSize;
-                y = Math.round(newY / this.gridSize) * this.gridSize;
-            }
+            // Move all selected elements
+            this.selectedElements.forEach(el => {
+                const initial = initialPositions.get(el.id);
+                let newX = initial.x + deltaX;
+                let newY = initial.y + deltaY;
 
-            // Constrain to canvas
-            x = Math.max(0, Math.min(x, this.canvas.offsetWidth - elementDiv.offsetWidth));
-            y = Math.max(0, Math.min(y, this.canvas.offsetHeight - elementDiv.offsetHeight));
+                if (this.snapToGrid) {
+                    newX = Math.round(newX / this.gridSize) * this.gridSize;
+                    newY = Math.round(newY / this.gridSize) * this.gridSize;
+                }
 
-            this.updateElementPosition(elementDiv.id, x, y);
+                // Boundary checking
+                const elDiv = document.getElementById(el.id);
+                if (elDiv) {
+                    newX = Math.max(0, Math.min(newX, this.canvas.offsetWidth - el.width));
+                    newY = Math.max(0, Math.min(newY, this.canvas.offsetHeight - el.height));
+                }
+
+                this.updateElementPosition(el.id, newX, newY);
+            });
         };
 
         const mouseUpHandler = () => {
@@ -656,90 +689,471 @@ class FormDesigner {
     }
 
     handleCanvasClick(e) {
-        if (e.target === this.canvas) {
+        // Only deselect when clicking on empty canvas with no modifiers
+        // AND not currently performing any operations
+        if ((e.target === this.canvas || e.target.classList.contains('canvas-grid')) &&
+            !this.isMarqueeSelecting &&
+            !this.isDragging &&
+            !this.isResizing &&
+            !this.isResizingColumn &&
+            !e.ctrlKey && !e.metaKey) {
             this.deselectAll();
         }
     }
 
-    selectElement(element) {
-        this.deselectAll();
-        this.selectedElement = element;
+    handleCanvasMouseDown(e) {
+        // Only start marquee selection if clicking directly on canvas or grid
+        if ((e.target === this.canvas || e.target.classList.contains('canvas-grid')) &&
+            !e.ctrlKey && !e.metaKey) {
 
-        const elementDiv = document.getElementById(element.id);
-        if (elementDiv) {
-            elementDiv.classList.add('selected');
+            // Don't start marquee if clicking on an element
+            if (e.target.closest('.design-element')) {
+                return;
+            }
+
+            this.startMarqueeSelection(e);
+        }
+    }
+
+    startMarqueeSelection(e) {
+        this.isMarqueeSelecting = true;
+        const canvasRect = this.canvas.getBoundingClientRect();
+
+        this.marqueeStart = {
+            x: (e.clientX - canvasRect.left) / this.zoom,
+            y: (e.clientY - canvasRect.top) / this.zoom
+        };
+
+        const marquee = document.createElement('div');
+        marquee.className = 'selection-marquee';
+        marquee.style.left = `${this.marqueeStart.x}px`;
+        marquee.style.top = `${this.marqueeStart.y}px`;
+        this.canvas.appendChild(marquee);
+
+        const mouseMoveHandler = (e) => {
+            if (!this.isMarqueeSelecting) return;
+
+            const currentX = (e.clientX - canvasRect.left) / this.zoom;
+            const currentY = (e.clientY - canvasRect.top) / this.zoom;
+
+            const left = Math.min(this.marqueeStart.x, currentX);
+            const top = Math.min(this.marqueeStart.y, currentY);
+            const width = Math.abs(currentX - this.marqueeStart.x);
+            const height = Math.abs(currentY - this.marqueeStart.y);
+
+            marquee.style.left = `${left}px`;
+            marquee.style.top = `${top}px`;
+            marquee.style.width = `${width}px`;
+            marquee.style.height = `${height}px`;
+
+            this.highlightElementsInMarquee(left, top, width, height);
+        };
+
+        const mouseUpHandler = (e) => {
+            this.isMarqueeSelecting = false;
+
+            const currentX = (e.clientX - canvasRect.left) / this.zoom;
+            const currentY = (e.clientY - canvasRect.top) / this.zoom;
+
+            const left = Math.min(this.marqueeStart.x, currentX);
+            const top = Math.min(this.marqueeStart.y, currentY);
+            const width = Math.abs(currentX - this.marqueeStart.x);
+            const height = Math.abs(currentY - this.marqueeStart.y);
+
+            this.selectElementsInMarquee(left, top, width, height);
+            marquee.remove();
+
+            document.removeEventListener('mousemove', mouseMoveHandler);
+            document.removeEventListener('mouseup', mouseUpHandler);
+        };
+
+        document.addEventListener('mousemove', mouseMoveHandler);
+        document.addEventListener('mouseup', mouseUpHandler);
+    }
+
+    highlightElementsInMarquee(left, top, width, height) {
+        this.elements.forEach(element => {
+            const elementDiv = document.getElementById(element.id);
+            if (!elementDiv) return;
+
+            const intersects = this.rectanglesIntersect(
+                left, top, width, height,
+                element.x, element.y, element.width, element.height
+            );
+
+            if (intersects) {
+                elementDiv.classList.add('marquee-highlight');
+            } else {
+                elementDiv.classList.remove('marquee-highlight');
+            }
+        });
+    }
+
+    selectElementsInMarquee(left, top, width, height) {
+        // Clear previous selection
+        this.deselectAll();
+
+        this.elements.forEach(element => {
+            const elementRect = {
+                left: element.x,
+                top: element.y,
+                right: element.x + element.width,
+                bottom: element.y + element.height
+            };
+
+            const marqueeRect = {
+                left: left,
+                top: top,
+                right: left + width,
+                bottom: top + height
+            };
+
+            // Check if element is completely or partially within marquee
+            const intersects = !(marqueeRect.right < elementRect.left ||
+                marqueeRect.left > elementRect.right ||
+                marqueeRect.bottom < elementRect.top ||
+                marqueeRect.top > elementRect.bottom);
+
+            if (intersects) {
+                this.addToSelection(element);
+            }
+        });
+
+        // Clean up highlight
+        document.querySelectorAll('.design-element.marquee-highlight').forEach(el => {
+            el.classList.remove('marquee-highlight');
+        });
+
+        this.showPropertiesPanel(this.selectedElements.length === 1 ? this.selectedElements[0] : null);
+    }
+
+
+    rectanglesIntersect(x1, y1, w1, h1, x2, y2, w2, h2) {
+        return x1 < x2 + w2 &&
+            x1 + w1 > x2 &&
+            y1 < y2 + h2 &&
+            y1 + h1 > y2;
+    }
+
+    selectElement(element) {
+        if (this.selectedElements.includes(element)) {
+            return;
+        } else {
+            // If not selected and no modifier key, clear existing selection
+            if (!this.isMarqueeSelecting) {
+                this.deselectAll();
+            }
+            this.addToSelection(element);
         }
 
-        this.showPropertiesPanel(element);
+        this.selectedElement = this.selectedElements.length === 1 ? this.selectedElements[0] : null;
+        this.showPropertiesPanel(this.selectedElement);
+    }
+
+    toggleElementSelection(element) {
+        const index = this.selectedElements.indexOf(element);
+
+        if (index > -1) {
+            this.selectedElements.splice(index, 1);
+            const elementDiv = document.getElementById(element.id);
+            if (elementDiv) {
+                elementDiv.classList.remove('selected');
+            }
+        } else {
+            this.addToSelection(element);
+        }
+
+        this.selectedElement = this.selectedElements.length === 1 ? this.selectedElements[0] : null;
+        this.showPropertiesPanel(this.selectedElement);
+    }
+
+    addToSelection(element) {
+        if (!this.selectedElements.includes(element)) {
+            this.selectedElements.push(element);
+            const elementDiv = document.getElementById(element.id);
+            if (elementDiv) {
+                elementDiv.classList.add('selected');
+                // Ensure resize handles are visible
+                elementDiv.querySelectorAll('.resize-handle').forEach(handle => {
+                    handle.style.display = 'block';
+                });
+            }
+        }
+    }
+
+    selectAll() {
+        this.deselectAll();
+        this.elements.forEach(element => {
+            this.addToSelection(element);
+        });
+        this.selectedElement = this.selectedElements.length === 1 ? this.selectedElements[0] : null;
+        this.showPropertiesPanel(this.selectedElement);
     }
 
     deselectAll() {
         this.selectedElement = null;
+        this.selectedElements = [];
         document.querySelectorAll('.design-element').forEach(el => {
             el.classList.remove('selected');
+            el.classList.remove('marquee-highlight');
+            // Hide resize handles
+            el.querySelectorAll('.resize-handle').forEach(handle => {
+                handle.style.display = 'none';
+            });
         });
         this.showPropertiesPanel(null);
     }
 
     showPropertiesPanel(element) {
-        if (!element) {
+        if (!element && this.selectedElements.length === 0) {
             this.propertiesContent.innerHTML = `
-                <div class="no-selection">
-                    <i class="fas fa-mouse-pointer"></i>
-                    <p>Select an element to edit its properties</p>
-                </div>
-            `;
+            <div class="no-selection">
+                <i class="fas fa-mouse-pointer"></i>
+                <p>Select an element to edit its properties</p>
+                <small style="color: #95a5a6; margin-top: 10px; display: block;">
+                    <strong>Multi-select:</strong> Ctrl+Click or drag to select multiple elements
+                </small>
+            </div>
+        `;
             return;
         }
 
-        let propertiesHTML = `
-            <div class="property-group">
-                <h4>Element ID</h4>
-                <div class="form-group">
-                    <label>Custom ID (Optional)</label>
-                    <input type="text" value="${element.properties.elementId || ''}" 
-                           onchange="designer.updateElementId('${element.id}', this.value)"
-                           placeholder="Enter unique ID">
-                    <small style="display: block; margin-top: 4px; color: #7f8c8d; font-size: 11px;">
-                        Internal ID: ${element.id}
-                    </small>
-                </div>
-            </div>
-                
-        `;
+        // Multi-selection mode
+        if (this.selectedElements.length > 1) {
+            this.showBulkPropertiesPanel();
+            return;
+        }
 
-        // Type-specific properties
+        // Single selection mode (keep your existing code here)
+        let propertiesHTML = `
+        <div class="property-group">
+            <h4>Element ID</h4>
+            <div class="form-group">
+                <label>Custom ID (Optional)</label>
+                <input type="text" value="${element.properties.elementId || ''}" 
+                       onchange="designer.updateElementId('${element.id}', this.value)"
+                       placeholder="Enter unique ID">
+                <small style="display: block; margin-top: 4px; color: #7f8c8d; font-size: 11px;">
+                    Internal ID: ${element.id}
+                </small>
+            </div>
+        </div>
+            
+    `;
+
         propertiesHTML += this.getTypeSpecificProperties(element);
 
         propertiesHTML += `
-            <div class="property-group">
-                <h4>Position & Size</h4>
-                    <div class="form-group">
-                        <label>X Position</label>
-                        <input type="number" value="${element.x}" onchange="designer.updateElementProperty('${element.id}', 'x', this.value)">
-                    </div>
-                    <div class="form-group">
-                        <label>Y Position</label>
-                        <input type="number" value="${element.y}" onchange="designer.updateElementProperty('${element.id}', 'y', this.value)">
-                    </div>
-                `;
+        <div class="property-group">
+            <h4>Position & Size</h4>
+                <div class="form-group">
+                    <label>X Position</label>
+                    <input type="number" value="${element.x}" onchange="designer.updateElementProperty('${element.id}', 'x', this.value)">
+                </div>
+                <div class="form-group">
+                    <label>Y Position</label>
+                    <input type="number" value="${element.y}" onchange="designer.updateElementProperty('${element.id}', 'y', this.value)">
+                </div>
+            `;
 
         if (element.type !== 'table') {
             propertiesHTML += `
-                <div class="form-group">
-                    <label>Width</label>
-                    <input type="number" value="${element.width}" onchange="designer.updateElementProperty('${element.id}', 'width', this.value)">
-                </div>
-                <div class="form-group">
-                    <label>Height</label>
-                    <input type="number" value="${element.height}" onchange="designer.updateElementProperty('${element.id}', 'height', this.value)">
-                </div>
-            `;
+            <div class="form-group">
+                <label>Width</label>
+                <input type="number" value="${element.width}" onchange="designer.updateElementProperty('${element.id}', 'width', this.value)">
+            </div>
+            <div class="form-group">
+                <label>Height</label>
+                <input type="number" value="${element.height}" onchange="designer.updateElementProperty('${element.id}', 'height', this.value)">
+            </div>
+        `;
         }
 
         propertiesHTML += `</div>`;
 
         this.propertiesContent.innerHTML = propertiesHTML;
+    }
+
+    showBulkPropertiesPanel() {
+        const elementTypes = [...new Set(this.selectedElements.map(el => el.type))];
+        const allSameType = elementTypes.length === 1;
+        const textTypes = ['text-field', 'label'];
+        const allTextElements = this.selectedElements.every(el => textTypes.includes(el.type));
+
+        let propertiesHTML = `
+        <div class="property-group" style="background: #e8f4f8; border-color: #3498db;">
+            <h4><i class="fas fa-layer-group"></i> Multiple Selection (${this.selectedElements.length})</h4>
+            <p style="font-size: 12px; color: #7f8c8d; margin-bottom: 10px;">
+                ${allSameType ? `All ${elementTypes[0]} elements` : 'Mixed element types'}
+            </p>
+        </div>
+    `;
+
+        // Show common text properties if all are text elements
+        if (allTextElements) {
+            const firstEl = this.selectedElements[0];
+
+            propertiesHTML += `
+            <div class="property-group">
+                <h4>Text Properties</h4>
+                <div class="form-group">
+                    <label>Font Size (pt)</label>
+                    <input type="number" value="${firstEl.properties.fontSize}" 
+                           onchange="designer.bulkUpdateProperty('fontSize', this.value)">
+                </div>
+                <div class="form-group">
+                    <label>Text Color</label>
+                    <div class="color-input">
+                        <input type="color" value="${firstEl.properties.color}" 
+                               onchange="designer.bulkUpdateProperty('color', this.value)">
+                        <input type="text" value="${firstEl.properties.color}" 
+                               onchange="designer.bulkUpdateProperty('color', this.value)">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Text Align</label>
+                    <select onchange="designer.bulkUpdateProperty('textAlign', this.value)">
+                        <option value="left" ${firstEl.properties.textAlign === 'left' ? 'selected' : ''}>Left</option>
+                        <option value="center" ${firstEl.properties.textAlign === 'center' ? 'selected' : ''}>Center</option>
+                        <option value="right" ${firstEl.properties.textAlign === 'right' ? 'selected' : ''}>Right</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Font Weight</label>
+                    <select onchange="designer.bulkUpdateProperty('fontWeight', this.value)">
+                        <option value="normal" ${firstEl.properties.fontWeight === 'normal' ? 'selected' : ''}>Normal</option>
+                        <option value="bold" ${firstEl.properties.fontWeight === 'bold' ? 'selected' : ''}>Bold</option>
+                    </select>
+                </div>
+            </div>
+        `;
+        }
+
+        propertiesHTML += `
+        <div class="property-group">
+            <h4>Bulk Actions</h4>
+            <button class="btn btn-secondary" onclick="designer.alignSelected('left')" style="width: 100%; margin-bottom: 8px;">
+                <i class="fas fa-align-left"></i> Align Left
+            </button>
+            <button class="btn btn-secondary" onclick="designer.alignSelected('center')" style="width: 100%; margin-bottom: 8px;">
+                <i class="fas fa-align-center"></i> Align Center
+            </button>
+            <button class="btn btn-secondary" onclick="designer.alignSelected('right')" style="width: 100%; margin-bottom: 8px;">
+                <i class="fas fa-align-right"></i> Align Right
+            </button>
+            <button class="btn btn-secondary" onclick="designer.alignSelected('top')" style="width: 100%; margin-bottom: 8px;">
+                <i class="fas fa-arrow-up"></i> Align Top
+            </button>
+            <button class="btn btn-secondary" onclick="designer.alignSelected('bottom')" style="width: 100%; margin-bottom: 8px;">
+                <i class="fas fa-arrow-down"></i> Align Bottom
+            </button>
+            <button class="btn btn-secondary" onclick="designer.distributeSelected('horizontal')" style="width: 100%; margin-bottom: 8px;">
+                <i class="fas fa-arrows-left-right"></i> Distribute Horizontally
+            </button>
+            <button class="btn btn-secondary" onclick="designer.distributeSelected('vertical')" style="width: 100%;">
+                <i class="fas fa-arrows-up-down"></i> Distribute Vertically
+            </button>
+        </div>
+    `;
+
+        this.propertiesContent.innerHTML = propertiesHTML;
+    }
+
+    bulkUpdateProperty(property, value) {
+        const textTypes = ['text-field', 'label'];
+
+        this.selectedElements.forEach(element => {
+            if (textTypes.includes(element.type)) {
+                if (property === 'fontSize') {
+                    element.properties[property] = parseInt(value);
+                } else {
+                    element.properties[property] = value;
+                }
+                this.renderElement(element);
+            }
+        });
+
+        this.saveToLocalStorage();
+    }
+
+    alignSelected(direction) {
+        if (this.selectedElements.length < 2) return;
+
+        switch (direction) {
+            case 'left':
+                const minX = Math.min(...this.selectedElements.map(el => el.x));
+                this.selectedElements.forEach(el => {
+                    el.x = minX;
+                    this.renderElement(el);
+                });
+                break;
+            case 'right':
+                const maxRight = Math.max(...this.selectedElements.map(el => el.x + el.width));
+                this.selectedElements.forEach(el => {
+                    el.x = maxRight - el.width;
+                    this.renderElement(el);
+                });
+                break;
+            case 'center':
+                const avgX = this.selectedElements.reduce((sum, el) => sum + el.x + el.width / 2, 0) / this.selectedElements.length;
+                this.selectedElements.forEach(el => {
+                    el.x = avgX - el.width / 2;
+                    this.renderElement(el);
+                });
+                break;
+            case 'top':
+                const minY = Math.min(...this.selectedElements.map(el => el.y));
+                this.selectedElements.forEach(el => {
+                    el.y = minY;
+                    this.renderElement(el);
+                });
+                break;
+            case 'bottom':
+                const maxBottom = Math.max(...this.selectedElements.map(el => el.y + el.height));
+                this.selectedElements.forEach(el => {
+                    el.y = maxBottom - el.height;
+                    this.renderElement(el);
+                });
+                break;
+        }
+
+        this.saveToLocalStorage();
+    }
+
+    distributeSelected(direction) {
+        if (this.selectedElements.length < 3) return;
+
+        const sorted = [...this.selectedElements].sort((a, b) => {
+            return direction === 'horizontal' ? a.x - b.x : a.y - b.y;
+        });
+
+        if (direction === 'horizontal') {
+            const start = sorted[0].x;
+            const end = sorted[sorted.length - 1].x + sorted[sorted.length - 1].width;
+            const totalWidth = sorted.reduce((sum, el) => sum + el.width, 0);
+            const gap = (end - start - totalWidth) / (sorted.length - 1);
+
+            let currentX = start;
+            sorted.forEach(el => {
+                el.x = currentX;
+                currentX += el.width + gap;
+                this.renderElement(el);
+            });
+        } else {
+            const start = sorted[0].y;
+            const end = sorted[sorted.length - 1].y + sorted[sorted.length - 1].height;
+            const totalHeight = sorted.reduce((sum, el) => sum + el.height, 0);
+            const gap = (end - start - totalHeight) / (sorted.length - 1);
+
+            let currentY = start;
+            sorted.forEach(el => {
+                el.y = currentY;
+                currentY += el.height + gap;
+                this.renderElement(el);
+            });
+        }
+
+        this.saveToLocalStorage();
     }
 
     getTypeSpecificProperties(element) {
@@ -1085,20 +1499,24 @@ class FormDesigner {
         contextMenu.style.left = `${e.clientX}px`;
         contextMenu.style.top = `${e.clientY}px`;
 
+        const multipleSelected = this.selectedElements.length > 1;
+
         contextMenu.innerHTML = `
-            <div class="context-menu-item" onclick="designer.deleteSelectedElement()">
-                <i class="fas fa-trash"></i> Delete
-            </div>
-            <div class="context-menu-item" onclick="designer.duplicateSelectedElement()">
-                <i class="fas fa-copy"></i> Duplicate
-            </div>
-            <div class="context-menu-item" onclick="designer.bringToFront()">
-                <i class="fas fa-arrow-up"></i> Bring to Front
-            </div>
-            <div class="context-menu-item" onclick="designer.sendToBack()">
-                <i class="fas fa-arrow-down"></i> Send to Back
-            </div>
-        `;
+        <div class="context-menu-item" onclick="designer.deleteSelectedElements()">
+            <i class="fas fa-trash"></i> Delete ${multipleSelected ? `(${this.selectedElements.length})` : ''}
+        </div>
+        <div class="context-menu-item" onclick="designer.duplicateSelectedElements()">
+            <i class="fas fa-copy"></i> Duplicate ${multipleSelected ? `(${this.selectedElements.length})` : ''}
+        </div>
+        ${!multipleSelected ? `
+        <div class="context-menu-item" onclick="designer.bringToFront()">
+            <i class="fas fa-arrow-up"></i> Bring to Front
+        </div>
+        <div class="context-menu-item" onclick="designer.sendToBack()">
+            <i class="fas fa-arrow-down"></i> Send to Back
+        </div>
+        ` : ''}
+    `;
 
         document.body.appendChild(contextMenu);
     }
@@ -1111,12 +1529,21 @@ class FormDesigner {
     }
 
     deleteSelectedElement() {
-        if (this.selectedElement) {
-            this.elements = this.elements.filter(el => el.id !== this.selectedElement.id);
-            const elementDiv = document.getElementById(this.selectedElement.id);
-            if (elementDiv) {
-                elementDiv.remove();
-            }
+        this.deleteSelectedElements();
+    }
+
+    deleteSelectedElements() {
+        if (this.selectedElements.length > 0) {
+            const idsToDelete = this.selectedElements.map(el => el.id);
+
+            idsToDelete.forEach(id => {
+                this.elements = this.elements.filter(el => el.id !== id);
+                const elementDiv = document.getElementById(id);
+                if (elementDiv) {
+                    elementDiv.remove();
+                }
+            });
+
             this.deselectAll();
             this.saveToLocalStorage();
         }
@@ -1124,17 +1551,31 @@ class FormDesigner {
     }
 
     duplicateSelectedElement() {
-        if (this.selectedElement) {
-            const original = this.selectedElement;
-            const duplicate = {
-                ...JSON.parse(JSON.stringify(original)),
-                id: `element-${this.nextId++}`,
-                x: original.x + 20,
-                y: original.y + 20
-            };
-            this.elements.push(duplicate);
-            this.renderElement(duplicate);
-            this.selectElement(duplicate);
+        this.duplicateSelectedElements();
+    }
+
+    duplicateSelectedElements() {
+        if (this.selectedElements.length > 0) {
+            const newElements = [];
+
+            this.selectedElements.forEach(original => {
+                const duplicate = {
+                    ...JSON.parse(JSON.stringify(original)),
+                    id: `element-${this.nextId++}`,
+                    x: original.x + 20,
+                    y: original.y + 20
+                };
+                this.elements.push(duplicate);
+                this.renderElement(duplicate);
+                newElements.push(duplicate);
+            });
+
+            // Select the duplicated elements
+            this.deselectAll();
+            newElements.forEach(el => this.addToSelection(el));
+            this.selectedElement = newElements.length === 1 ? newElements[0] : null;
+            this.showPropertiesPanel(this.selectedElement);
+
             this.saveToLocalStorage();
         }
         this.hideContextMenu();
@@ -1161,65 +1602,66 @@ class FormDesigner {
     }
 
     moveSelectedElementWithArrowKeys(e) {
-        if (!this.selectedElement) return;
+        if (this.selectedElements.length === 0) return;
 
-        const element = this.selectedElement;
-        const elementDiv = document.getElementById(element.id);
+        // Add moving class for visual feedback to all selected elements
+        this.selectedElements.forEach(element => {
+            const elementDiv = document.getElementById(element.id);
+            if (elementDiv) {
+                elementDiv.classList.add('moving');
+                setTimeout(() => {
+                    elementDiv.classList.remove('moving');
+                }, 150);
+            }
+        });
 
-        // Add moving class for visual feedback
-        if (elementDiv) {
-            elementDiv.classList.add('moving');
-            setTimeout(() => {
-                elementDiv.classList.remove('moving');
-            }, 150);
-        }
+        let moveAmount = 1;
 
-        let moveAmount = 1; // Default move amount (1px or 1 grid unit)
-
-        // If shift is pressed, move by 10 units
         if (e.shiftKey) {
             moveAmount = 10;
         }
 
-        // Apply snap to grid if enabled
         if (this.snapToGrid) {
             moveAmount = this.gridSize;
             if (e.shiftKey) {
-                moveAmount = this.gridSize * 10; // 10 grid units when shift is pressed
+                moveAmount = this.gridSize * 10;
             }
         }
 
-        let newX = element.x;
-        let newY = element.y;
+        this.selectedElements.forEach(element => {
+            let newX = element.x;
+            let newY = element.y;
 
-        switch (e.key) {
-            case 'ArrowUp':
-                newY = Math.max(0, element.y - moveAmount);
-                break;
-            case 'ArrowDown':
-                newY = Math.min(
-                    this.canvas.offsetHeight - element.height,
-                    element.y + moveAmount
-                );
-                break;
-            case 'ArrowLeft':
-                newX = Math.max(0, element.x - moveAmount);
-                break;
-            case 'ArrowRight':
-                newX = Math.min(
-                    this.canvas.offsetWidth - element.width,
-                    element.x + moveAmount
-                );
-                break;
-        }
+            switch (e.key) {
+                case 'ArrowUp':
+                    newY = Math.max(0, element.y - moveAmount);
+                    break;
+                case 'ArrowDown':
+                    newY = Math.min(
+                        this.canvas.offsetHeight - element.height,
+                        element.y + moveAmount
+                    );
+                    break;
+                case 'ArrowLeft':
+                    newX = Math.max(0, element.x - moveAmount);
+                    break;
+                case 'ArrowRight':
+                    newX = Math.min(
+                        this.canvas.offsetWidth - element.width,
+                        element.x + moveAmount
+                    );
+                    break;
+            }
 
-        // Only update if position changed
-        if (newX !== element.x || newY !== element.y) {
-            this.updateElementPosition(element.id, newX, newY);
-            this.saveToLocalStorage();
+            if (newX !== element.x || newY !== element.y) {
+                this.updateElementPosition(element.id, newX, newY);
+            }
+        });
 
-            // Update properties panel if open
-            this.showPropertiesPanel(element);
+        this.saveToLocalStorage();
+
+        if (this.selectedElements.length === 1) {
+            this.showPropertiesPanel(this.selectedElements[0]);
         }
     }
 
@@ -1227,17 +1669,22 @@ class FormDesigner {
     handleKeyboard(e) {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
-        if (e.key === 'Delete' && this.selectedElement) {
-            this.deleteSelectedElement();
-        } else if (e.ctrlKey && e.key === 'd' && this.selectedElement) {
+        if (e.key === 'Delete' && this.selectedElements.length > 0) {
+            this.deleteSelectedElements();
+        } else if ((e.ctrlKey || e.metaKey) && e.key === 'd' && this.selectedElements.length > 0) {
             e.preventDefault();
-            this.duplicateSelectedElement();
-        } else if (e.ctrlKey && e.key === 's') {
+            this.duplicateSelectedElements();
+        } else if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+            e.preventDefault();
+            this.selectAll();
+        } else if ((e.ctrlKey || e.metaKey) && e.key === 's') {
             e.preventDefault();
             this.saveTemplate();
-        } else if (this.selectedElement && (e.key.startsWith('Arrow') || e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        } else if (this.selectedElements.length > 0 && (e.key.startsWith('Arrow') || e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
             e.preventDefault();
             this.moveSelectedElementWithArrowKeys(e);
+        } else if (e.key === 'Escape') {
+            this.deselectAll();
         }
     }
 

@@ -16,6 +16,31 @@ body {
     flex-direction: column;
 }
 
+/* Prevent text selection on draggable elements and during interactions */
+.toolbox-item, .design-element {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+    /* Optional: Allow text selection only when explicitly editing */
+    .design-element.selected {
+        -webkit-user-select: text;
+        -moz-user-select: text;
+        -ms-user-select: text;
+        user-select: text;
+    }
+
+/* During drag operations, prevent all text selection */
+body.dragging, body.dragging * {
+    -webkit-user-select: none !important;
+    -moz-user-select: none !important;
+    -ms-user-select: none !important;
+    user-select: none !important;
+    cursor: grabbing !important;
+}
+
 /* Header */
 .header {
     background: #2c3e50;
@@ -247,6 +272,12 @@ body {
         border-color: #3498db;
         box-shadow: 0 0 0 2px #3498db;
         z-index: 10;
+    }
+        
+    .design-element.marquee-highlight {
+        border-color: #9b59b6 !important;
+        box-shadow: 0 0 0 2px #9b59b6 !important;
+        z-index: 5;
     }
 
         .design-element.selected .resize-handle {
@@ -497,7 +528,7 @@ body {
     border-radius: 2px;
     z-index: 10000; /* Increased z-index */
     box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-    display: none;
+    display: none !important;
     pointer-events: auto;
 }
 
@@ -632,4 +663,12 @@ body {
     border-color: #e74c3c !important;
     box-shadow: 0 0 0 2px #e74c3c !important;
     transition: all 0.1s ease;
+}
+
+.selection-marquee {
+    position: absolute;
+    border: 2px dashed #9b59b6;
+    background: rgba(155, 89, 182, 0.1);
+    pointer-events: none;
+    z-index: 1000;
 }
