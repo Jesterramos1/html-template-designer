@@ -30,14 +30,25 @@
                     </div>
                 </div>
                 <button id="saveBtn" class="btn btn-primary">
-                    <i class="fas fa-save"></i> Save Template
+                    <i class="fas fa-save"></i> Save State
                 </button>
-                <button id="exportHtmlBtn" class="btn btn-secondary">
-                    <i class="fas fa-code"></i> Export HTML
-                </button>
-                <button id="printBtn" class="btn btn-secondary">
-                    <i class="fas fa-print"></i> Print
-                </button>
+                <div class="dropdown">
+                    <button class="btn btn-secondary dropdown-toggle" type="button" id="exportDropdown" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                        <i class="fas fa-download"></i> Export
+                    </button>
+                    <div class="dropdown-menu" aria-labelledby="exportDropdown">
+                        <a class="dropdown-item" href="#" id="exportHtmlBtn">
+                            <i class="fas fa-code"></i> Export HTML
+                        </a>
+                        <a class="dropdown-item" href="#" id="exportJsonBtn">
+                            <i class="fas fa-file-code"></i> Export JSON
+                        </a>
+                        <div class="dropdown-divider"></div>
+                        <a class="dropdown-item" href="#" id="printBtn">
+                            <i class="fas fa-print"></i> Print
+                        </a>
+                    </div>
+                </div>
                 <div class="file-upload-wrapper">
                     <input type="file" id="importFile" accept=".html,.json" style="display: none;">
                     <button id="importBtn" class="btn btn-secondary">

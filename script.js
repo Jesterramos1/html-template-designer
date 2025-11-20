@@ -95,6 +95,39 @@ class FormDesigner {
 
         // Context menu
         document.addEventListener('click', () => this.hideContextMenu());
+
+        // Export dropdown
+        const exportDropdown = document.getElementById('exportDropdown');
+        const dropdownMenu = exportDropdown.nextElementSibling;
+
+        exportDropdown.addEventListener('click', (e) => {
+            e.stopPropagation();
+            dropdownMenu.classList.toggle('show');
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', () => {
+            dropdownMenu.classList.remove('show');
+        });
+
+        // Export buttons
+        document.getElementById('exportHtmlBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            this.exportAsHTML();
+            dropdownMenu.classList.remove('show');
+        });
+
+        document.getElementById('exportJsonBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            this.exportAsJSON();
+            dropdownMenu.classList.remove('show');
+        });
+
+        document.getElementById('printBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            this.printForm();
+            dropdownMenu.classList.remove('show');
+        });
     }
 
     handleToolboxDragStart(e) {
@@ -2115,6 +2148,19 @@ class FormDesigner {
         this.downloadFile(htmlContent, 'form-template.html', 'text/html');
     }
 
+    exportAsJSON() {
+        const template = {
+            elements: this.elements,
+            nextId: this.nextId,
+            paperSize: document.getElementById('paperSize').value,
+            version: '1.0',
+            exportedAt: new Date().toISOString()
+        };
+
+        const jsonContent = JSON.stringify(template, null, 2);
+        this.downloadFile(jsonContent, 'form-template.json', 'application/json');
+    }
+
     printForm() {
         const htmlContent = this.generateHTML();
         const printWindow = window.open('', '_blank');
@@ -2537,7 +2583,14 @@ class FormDesigner {
                     const template = JSON.parse(content);
                     this.elements = template.elements || [];
                     this.nextId = template.nextId || 1;
+
+                    if (template.paperSize) {
+                        document.getElementById('paperSize').value = template.paperSize;
+                        this.applyPaperSize(template.paperSize);
+                    }
+
                     this.renderAllElements();
+                    this.deselectAll();
                     this.saveToLocalStorage();
                     alert('Template imported successfully!');
                 }
